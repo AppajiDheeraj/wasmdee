@@ -4,13 +4,16 @@ import {
   Check,
   Eye,
   EyeOff,
+  Loader2,
   Moon,
+  Power,
   Sun,
 } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
 import { Label } from './components/ui/label';
 import authVisual from './assets/images/auth-visual.jpg';
+import { isSupabaseConfigured, supabase } from './lib/supabase';
 
 const GoogleIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
@@ -46,15 +49,186 @@ function App() {
   const [mode, setMode] = useState('signin');
   const [theme, setTheme] = useState('dark');
   const [showPassword, setShowPassword] = useState(false);
+  const [session, setSession] = useState(null);
+  const [isSessionLoading, setIsSessionLoading] = useState(isSupabaseConfigured);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+  });
+  const [notice, setNotice] = useState({
+    tone: 'info',
+    text: isSupabaseConfigured
+      ? ''
+      : 'Add your Supabase URL and publishable key to gui/frontend/.env to enable authentication.',
+  });
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
 
-  const isSignUp = mode === 'signup';
+  useEffect(() => {
+    if (!supabase) {
+      setIsSessionLoading(false);
+      return undefined;
+    }
 
-  const handleSubmit = (event) => {
+    let isMounted = true;
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!isMounted) {
+        return;
+      }
+
+      if (error) {
+        setNotice({ tone: 'error', text: error.message });
+      }
+
+      setSession(data.session);
+      setIsSessionLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setIsSessionLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const isSignUp = mode === 'signup';
+  const user = session?.user;
+
+  const updateForm = (event) => {
+    const { name, value } = event.target;
+    setForm((currentForm) => ({
+      ...currentForm,
+      [name]: value,
+    }));
+  };
+
+  const handleSubmit = async (event) => {
     event.preventDefault();
+
+    if (!supabase) {
+      setNotice({
+        tone: 'error',
+        text: 'Supabase is not configured yet. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY first.',
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setNotice({ tone: 'info', text: '' });
+
+    const credentials = {
+      email: form.email.trim(),
+      password: form.password,
+    };
+
+    const { data, error } = isSignUp
+      ? await supabase.auth.signUp({
+          ...credentials,
+          options: {
+            data: {
+              full_name: form.name.trim(),
+            },
+            emailRedirectTo: window.location.origin,
+          },
+        })
+      : await supabase.auth.signInWithPassword(credentials);
+
+    if (error) {
+      setNotice({ tone: 'error', text: error.message });
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (isSignUp && !data.session) {
+      setNotice({
+        tone: 'success',
+        text: 'Account created. Check your email to confirm your address, then sign in.',
+      });
+    } else {
+      setNotice({ tone: 'success', text: isSignUp ? 'Account ready.' : 'Signed in.' });
+    }
+
+    setIsSubmitting(false);
+  };
+
+  const handleOAuth = async (provider) => {
+    if (!supabase) {
+      setNotice({
+        tone: 'error',
+        text: 'Supabase is not configured yet. Add your project URL and publishable key first.',
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setNotice({ tone: 'info', text: '' });
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+
+    if (error) {
+      setNotice({ tone: 'error', text: error.message });
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    if (!supabase) {
+      setNotice({
+        tone: 'error',
+        text: 'Supabase is not configured yet. Add your project URL and publishable key first.',
+      });
+      return;
+    }
+
+    if (!form.email.trim()) {
+      setNotice({ tone: 'error', text: 'Enter your email address first.' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(form.email.trim(), {
+      redirectTo: window.location.origin,
+    });
+
+    setNotice(
+      error
+        ? { tone: 'error', text: error.message }
+        : { tone: 'success', text: 'Password reset email sent.' }
+    );
+    setIsSubmitting(false);
+  };
+
+  const handleSignOut = async () => {
+    if (!supabase) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    const { error } = await supabase.auth.signOut();
+    setNotice(error ? { tone: 'error', text: error.message } : { tone: 'info', text: '' });
+    setIsSubmitting(false);
+  };
+
+  const noticeClasses = {
+    error: 'border-destructive/35 bg-destructive/10 text-destructive',
+    info: 'border-border bg-muted text-muted-foreground',
+    success: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
   };
 
   return (
@@ -76,103 +250,187 @@ function App() {
 
           <div className="flex min-h-0 flex-1 items-center justify-center py-4">
             <div className="w-full max-w-[400px]">
-              <div className="mb-6 space-y-2.5">
-                <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-                  {isSignUp ? 'Create your account.' : 'Welcome back.'}
-                </h1>
-                <p className="max-w-sm text-sm leading-6 text-muted-foreground">
-                  {isSignUp
-                    ? 'Start your Wasmdee workspace with an email or a trusted social provider.'
-                    : 'Sign in to continue building, testing, and shipping your WebAssembly projects.'}
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Button type="button" variant="outline" className="h-11 rounded-lg bg-card">
-                  <GoogleIcon />
-                  Google
-                </Button>
-                <Button type="button" variant="outline" className="h-11 rounded-lg bg-card">
-                  <GitHubIcon />
-                  GitHub
-                </Button>
-              </div>
-
-              <div className="my-5 flex items-center gap-4 text-sm text-muted-foreground">
-                <span className="h-px flex-1 bg-border" />
-                Or use email
-                <span className="h-px flex-1 bg-border" />
-              </div>
-
-              <form className="space-y-4" onSubmit={handleSubmit}>
-                {isSignUp && (
-                  <div className="grid gap-2">
-                    <Label htmlFor="name">Full name</Label>
-                    <Input id="name" name="name" placeholder="Dheeraj Appaji" autoComplete="name" />
-                  </div>
-                )}
-
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    placeholder="you@example.com"
-                    autoComplete="email"
-                    required
-                  />
+              {isSessionLoading ? (
+                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Checking session...
                 </div>
+              ) : user ? (
+                <div className="space-y-6">
+                  <div className="space-y-2.5">
+                    <p className="text-sm font-medium text-muted-foreground">Workspace access</p>
+                    <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                      You're in.
+                    </h1>
+                    <p className="max-w-sm text-sm leading-6 text-muted-foreground">
+                      Signed in as {user.email}. The app can now load user-owned data through
+                      Supabase Auth.
+                    </p>
+                  </div>
 
-                <div className="grid gap-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="password">Password</Label>
-                    {!isSignUp && (
+                  <div className="rounded-xl border border-border bg-card p-4 text-sm">
+                    <div className="font-medium text-card-foreground">
+                      {user.user_metadata?.full_name || user.email}
+                    </div>
+                    <div className="mt-1 text-muted-foreground">{user.id}</div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 w-full rounded-lg bg-card"
+                    disabled={isSubmitting}
+                    onClick={handleSignOut}
+                  >
+                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                    Sign out
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-6 space-y-2.5">
+                    <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                      {isSignUp ? 'Create your account.' : 'Welcome back.'}
+                    </h1>
+                    <p className="max-w-sm text-sm leading-6 text-muted-foreground">
+                      {isSignUp
+                        ? 'Start your Wasmdee workspace with an email or a trusted social provider.'
+                        : 'Sign in to continue building, testing, and shipping your WebAssembly projects.'}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 rounded-lg bg-card"
+                      disabled={isSubmitting}
+                      onClick={() => handleOAuth('google')}
+                    >
+                      <GoogleIcon />
+                      Google
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 rounded-lg bg-card"
+                      disabled={isSubmitting}
+                      onClick={() => handleOAuth('github')}
+                    >
+                      <GitHubIcon />
+                      GitHub
+                    </Button>
+                  </div>
+
+                  <div className="my-5 flex items-center gap-4 text-sm text-muted-foreground">
+                    <span className="h-px flex-1 bg-border" />
+                    Or use email
+                    <span className="h-px flex-1 bg-border" />
+                  </div>
+
+                  <form className="space-y-4" onSubmit={handleSubmit}>
+                    {isSignUp && (
+                      <div className="grid gap-2">
+                        <Label htmlFor="name">Full name</Label>
+                        <Input
+                          id="name"
+                          name="name"
+                          placeholder="Dheeraj Appaji"
+                          autoComplete="name"
+                          value={form.name}
+                          onChange={updateForm}
+                        />
+                      </div>
+                    )}
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        name="email"
+                        type="email"
+                        placeholder="you@example.com"
+                        autoComplete="email"
+                        value={form.email}
+                        onChange={updateForm}
+                        required
+                      />
+                    </div>
+
+                  <div className="grid gap-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="password">Password</Label>
+                      {!isSignUp && (
+                        <button
+                          type="button"
+                          className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                          disabled={isSubmitting}
+                          onClick={handlePasswordReset}
+                        >
+                          Forgot password?
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Enter your password"
+                        autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                        className="pr-11"
+                        value={form.password}
+                        onChange={updateForm}
+                        required
+                      />
                       <button
                         type="button"
-                        className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
+                        onClick={() => setShowPassword(!showPassword)}
                       >
-                        Forgot password?
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
-                    )}
+                    </div>
                   </div>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      name="password"
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Enter your password"
-                      autoComplete={isSignUp ? 'new-password' : 'current-password'}
-                      className="pr-11"
-                      required
-                    />
+
+                    <Button
+                      type="submit"
+                      className="h-11 w-full rounded-lg text-sm font-semibold"
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <>
+                          {isSignUp ? 'Create account' : 'Sign in'}
+                          <ArrowRight className="h-4 w-4" />
+                        </>
+                      )}
+                    </Button>
+                  </form>
+
+                  {notice.text && (
+                    <p className={`mt-4 rounded-lg border px-3 py-2 text-sm ${noticeClasses[notice.tone]}`}>
+                      {notice.text}
+                    </p>
+                  )}
+
+                  <p className="mt-5 text-center text-sm text-muted-foreground">
+                    {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
                     <button
                       type="button"
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
-                      onClick={() => setShowPassword(!showPassword)}
+                      className="font-medium text-foreground underline-offset-4 hover:underline"
+                      onClick={() => {
+                        setMode(isSignUp ? 'signin' : 'signup');
+                        setNotice({ tone: 'info', text: '' });
+                      }}
                     >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {isSignUp ? 'Sign in' : 'Sign up'}
                     </button>
-                  </div>
-                </div>
-
-                <Button type="submit" className="h-11 w-full rounded-lg text-sm font-semibold">
-                  {isSignUp ? 'Create account' : 'Sign in'}
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </form>
-
-              <p className="mt-6 text-center text-sm text-muted-foreground">
-                {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-                <button
-                  type="button"
-                  className="font-medium text-foreground underline-offset-4 hover:underline"
-                  onClick={() => setMode(isSignUp ? 'signin' : 'signup')}
-                >
-                  {isSignUp ? 'Sign in' : 'Sign up'}
-                </button>
-              </p>
+                  </p>
+                </>
+              )}
             </div>
           </div>
         </section>
