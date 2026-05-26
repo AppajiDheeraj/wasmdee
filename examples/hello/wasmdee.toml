@@ -1,0 +1,7 @@
+[function]
+name = "hello"
+
+[capabilities]
+network = false
+kv = false
+fs = []

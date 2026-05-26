@@ -15,11 +15,11 @@ A Wasm-native serverless runtime that runs functions at microsecond scale — us
 ## quick start
 
 ```bash
-go install github.com/dheeraj/wasmdee/cmd/wrun@latest
+go install github.com/dheeraj/wasmdee/cmd/wasmdee@latest
 
-wrun deploy hello.wasm
-wrun invoke hello
-wrun serve   # HTTP on :8080
+wasmdee deploy hello.wasm
+wasmdee invoke hello
+wasmdee serve   # HTTP on :8080
 ```
 
 ```bash
@@ -62,7 +62,7 @@ Built on ideas from FAASM, Catalyzer, Nightcore, SAND, and Cloudflare Workers.
 
 | phase | status |
 |---|---|
-| core runtime skeleton (wrun deploy + invoke) | 🔲 in progress |
+| core runtime skeleton (wasmdee deploy + invoke) | 🔲 in progress |
 | instance pool + HTTP trigger | 🔲 planned |
 | snapshot + CoW cold-start | 🔲 planned |
 | state tiers + host APIs | 🔲 planned |
@@ -74,7 +74,7 @@ Star the repo to follow along. Contributions welcome once Phase 1 ships.
 
 ## capability model
 
-Each function ships with a `wrun.toml` declaring what it can access:
+Each function ships with a `wasmdee.toml` declaring what it can access:
 
 ```toml
 [capabilities]
