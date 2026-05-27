@@ -3,7 +3,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { functions } from '@/data/dashboard';
 
-export function FunctionCatalog() {
+export function FunctionCatalog({ query = '', onOpenFunction }) {
+  const filteredFunctions = functions.filter((row) => {
+    const haystack = `${row.name} ${row.runtime} ${row.namespace} ${row.repository}`.toLowerCase();
+    return haystack.includes(query.toLowerCase());
+  });
+
   return (
     <Card className="overflow-hidden rounded-md shadow-none">
       <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border p-3">
@@ -32,8 +37,8 @@ export function FunctionCatalog() {
               </tr>
             </thead>
             <tbody>
-              {functions.map((row) => (
-                <FunctionRow key={row.name} row={row} />
+              {filteredFunctions.map((row) => (
+                <FunctionRow key={row.name} row={row} onOpenFunction={onOpenFunction} />
               ))}
             </tbody>
           </table>
@@ -54,11 +59,14 @@ export function FunctionCatalog() {
   );
 }
 
-function FunctionRow({ row }) {
+function FunctionRow({ row, onOpenFunction }) {
   const Icon = row.icon;
 
   return (
-    <tr className="group border-b border-border last:border-b-0 transition hover:bg-secondary/70">
+    <tr
+      className="group cursor-pointer border-b border-border last:border-b-0 transition hover:bg-secondary/70"
+      onClick={() => onOpenFunction?.(row)}
+    >
       <td className="px-3 py-3">
         <div className="flex items-center gap-2.5">
           <span className="flex size-8 items-center justify-center rounded-sm bg-secondary text-foreground">

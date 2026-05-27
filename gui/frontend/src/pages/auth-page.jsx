@@ -47,7 +47,6 @@ export function AuthPage({
           <div className="flex min-h-0 flex-1 items-center justify-center py-4">
             <div className="w-full max-w-[400px]">
               <div className="mb-6 flex flex-col gap-2.5">
-                <LogoMark />
                 <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
                   {isSignUp ? 'Create your account.' : 'Welcome back.'}
                 </h1>

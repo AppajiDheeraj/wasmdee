@@ -4,7 +4,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { topNavItems } from '@/data/dashboard';
 
-export function TopBar({ initials, theme, onToggleTheme }) {
+export function TopBar({
+  activeView,
+  initials,
+  searchValue,
+  theme,
+  onHelp,
+  onNotifications,
+  onSearchChange,
+  onToggleTheme,
+  onViewChange,
+}) {
   return (
     <header className="sticky top-0 z-30 flex h-12 items-center justify-between border-b border-border bg-background px-4">
       <div className="flex items-center gap-5">
@@ -15,15 +25,16 @@ export function TopBar({ initials, theme, onToggleTheme }) {
         <nav className="hidden h-12 items-center gap-4 md:flex">
           {topNavItems.map((item) => (
             <button
-              key={item}
+              key={item.id}
               type="button"
+              onClick={() => onViewChange(item.id)}
               className={`h-12 border-b-2 px-0.5 text-[13px] font-medium transition ${
-                item === 'Dashboard'
+                activeView === item.id
                   ? 'border-foreground text-foreground'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              {item}
+              {item.label}
             </button>
           ))}
         </nav>
@@ -32,12 +43,24 @@ export function TopBar({ initials, theme, onToggleTheme }) {
       <div className="flex items-center gap-1.5">
         <div className="relative hidden lg:block">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input className="h-8 w-64 rounded-md bg-card pl-8 text-sm" placeholder="Search functions..." />
+          <Input
+            className="h-8 w-64 rounded-md bg-card pl-8 text-sm"
+            placeholder="Search functions..."
+            value={searchValue}
+            onChange={(event) => onSearchChange(event.target.value)}
+          />
         </div>
-        <Button type="button" variant="ghost" size="icon" className="size-8" aria-label="Notifications">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          aria-label="Notifications"
+          onClick={onNotifications}
+        >
           <Bell />
         </Button>
-        <Button type="button" variant="ghost" size="icon" className="size-8" aria-label="Help">
+        <Button type="button" variant="ghost" size="icon" className="size-8" aria-label="Help" onClick={onHelp}>
           <CircleHelp />
         </Button>
         <Button

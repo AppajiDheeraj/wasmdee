@@ -10,23 +10,28 @@ import {
   Mail,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Waves,
   Zap,
 } from 'lucide-react';
 
-export const topNavItems = ['Dashboard', 'Logs', 'Metrics'];
+export const topNavItems = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'logs', label: 'Logs' },
+  { id: 'metrics', label: 'Metrics' },
+];
 
 export const sidebarItems = [
-  { label: 'Dashboard', icon: Gauge },
-  { label: 'Functions', icon: Zap, active: true },
-  { label: 'Namespaces', icon: Layers3 },
-  { label: 'Secrets', icon: KeyRound },
-  { label: 'Settings', icon: Settings },
+  { id: 'dashboard', label: 'Dashboard', icon: Gauge },
+  { id: 'functions', label: 'Functions', icon: Zap },
+  { id: 'namespaces', label: 'Namespaces', icon: Layers3 },
+  { id: 'secrets', label: 'Secrets', icon: KeyRound },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 export const sidebarUtilityItems = [
-  { label: 'Documentation', icon: BookOpen },
-  { label: 'API Reference', icon: Code2 },
+  { id: 'docs', label: 'Documentation', icon: BookOpen },
+  { id: 'api', label: 'API Reference', icon: Code2 },
 ];
 
 export const metrics = [
@@ -114,4 +119,32 @@ export const nodes = [
   ['eu-west-1a-02', '45% CPU', 'ok'],
   ['eu-west-1b-01', '88% CPU', 'ok'],
   ['us-east-1a-04', 'Down', 'down'],
+];
+
+export const logLines = [
+  ['14:22:01.043', 'INFO', 'Initializing handler for function py1-image-resize'],
+  ['14:22:01.052', 'INFO', 'Loaded model weights for RESNET-50 in 12ms'],
+  ['14:22:05.112', 'WARN', 'Memory pressure detected (78% usage). Scaling window approaching.'],
+  ['14:22:12.450', 'INFO', 'Request received: ID: 8823-XJ-90 | Content-Type: image/jpeg'],
+  ['14:22:12.890', 'ERROR', 'Validation failed: Malformed EXIF data in source image.'],
+  ['14:22:15.002', 'INFO', 'Heartbeat check: health ok.'],
+  ['14:22:20.311', 'INFO', 'Processed 12 images successfully in last window.'],
+];
+
+export const namespaces = [
+  ['default', '18 functions', 'Healthy', '2m ago'],
+  ['processing', '4 functions', 'Healthy', '12m ago'],
+  ['security', '2 functions', 'Healthy', '1h ago'],
+];
+
+export const secrets = [
+  ['SUPABASE_URL', 'Runtime', 'Updated 3h ago'],
+  ['WASMDEE_TOKEN', 'Deployments', 'Updated 1d ago'],
+  ['SENTRY_DSN', 'Observability', 'Updated 5d ago'],
+];
+
+export const settingsSections = [
+  ['Project', 'Wasmdee Cloud Console', SlidersHorizontal],
+  ['Region', 'ap-south-1 primary, eu-west-1 failover', Gauge],
+  ['Runtime defaults', 'Python 3.11, Node 18, Rust stable', Code2],
 ];
