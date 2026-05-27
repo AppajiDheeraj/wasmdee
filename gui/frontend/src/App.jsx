@@ -1,18 +1,50 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Activity,
+  ArrowDown,
   ArrowRight,
-  Check,
+  Bell,
+  BookOpen,
+  Boxes,
+  CheckCircle2,
+  ChevronRight,
+  CircleHelp,
+  Code2,
+  Database,
+  Download,
   Eye,
   EyeOff,
+  Filter,
+  Gauge,
+  KeyRound,
+  Layers3,
   Loader2,
+  LogOut,
+  Mail,
   Moon,
-  Power,
+  MoreHorizontal,
+  Play,
+  Plus,
+  Search,
+  Settings,
+  ShieldCheck,
   Sun,
+  Terminal,
+  Waves,
+  Zap,
 } from 'lucide-react';
 import { Button } from './components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from './components/ui/card';
 import { Input } from './components/ui/input';
 import { Label } from './components/ui/label';
 import authVisual from './assets/images/auth-visual.jpg';
+import appLogo from './assets/images/wasmdee-logo.png';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 
 const GoogleIcon = () => (
@@ -45,9 +77,504 @@ const GitHubIcon = () => (
   </svg>
 );
 
+const navItems = [
+  { label: 'Dashboard', icon: Gauge },
+  { label: 'Functions', icon: Zap, active: true },
+  { label: 'Namespaces', icon: Layers3 },
+  { label: 'Secrets', icon: KeyRound },
+  { label: 'Settings', icon: Settings },
+];
+
+const functionRows = [
+  {
+    name: 'image-resize-worker',
+    runtime: 'v1.2.4 - go1.21',
+    namespace: 'processing',
+    repository: 'github.com/wasmdee/faas-resize',
+    deployed: '2h ago',
+    invocations: '452,190',
+    replicas: '5',
+    status: 'ok',
+    icon: Waves,
+  },
+  {
+    name: 'auth-validator',
+    runtime: 'v2.0.1 - node18',
+    namespace: 'security',
+    repository: 'github.com/wasmdee/faas-auth',
+    deployed: '4d ago',
+    invocations: '8.2M',
+    replicas: '12',
+    status: 'ok',
+    icon: ShieldCheck,
+  },
+  {
+    name: 'email-dispatcher',
+    runtime: 'v0.9.3 - python3',
+    namespace: 'comms',
+    repository: 'github.com/wasmdee/faas-mail',
+    deployed: '15m ago',
+    invocations: '12,045',
+    replicas: '1',
+    status: 'warn',
+    icon: Mail,
+  },
+  {
+    name: 'db-cleaner-job',
+    runtime: 'v1.1.0 - rust',
+    namespace: 'maintenance',
+    repository: 'github.com/wasmdee/faas-cron',
+    deployed: '3h ago',
+    invocations: '1,240',
+    replicas: '0',
+    status: 'idle',
+    icon: Database,
+  },
+];
+
+const chartBars = [34, 18, 52, 24, 66, 78, 44, 92, 58, 34, 46, 24];
+
+function LogoMark({ size = 'md' }) {
+  const sizeClass = size === 'sm' ? 'size-8' : 'size-10';
+
+  return (
+    <span className={`${sizeClass} flex shrink-0 items-center justify-center overflow-hidden`}>
+      <img src={appLogo} alt="Wasmdee app icon" className="h-full w-full object-contain" />
+    </span>
+  );
+}
+
+function DashboardShell({ user, isSubmitting, onSignOut, theme, onToggleTheme }) {
+  const initials = useMemo(() => {
+    const source = user?.user_metadata?.full_name || user?.email || 'Wasmdee User';
+    return source
+      .split(/[.\s@_-]+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('');
+  }, [user]);
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background px-4 sm:px-6">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3">
+            <LogoMark size="sm" />
+            <span className="text-xl font-bold tracking-tight">Wasmdee</span>
+          </div>
+          <nav className="hidden h-16 items-center gap-6 md:flex">
+            {['Dashboard', 'Logs', 'Metrics'].map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={`h-16 border-b-2 px-1 text-sm font-medium transition ${
+                  item === 'Dashboard'
+                    ? 'border-foreground text-foreground'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {item}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="relative hidden lg:block">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input className="h-10 w-72 bg-card pl-9" placeholder="Search functions..." />
+          </div>
+          <Button type="button" variant="ghost" size="icon" aria-label="Notifications">
+            <Bell />
+          </Button>
+          <Button type="button" variant="ghost" size="icon" aria-label="Help">
+            <CircleHelp />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            onClick={onToggleTheme}
+          >
+            {theme === 'dark' ? <Sun /> : <Moon />}
+          </Button>
+          <div className="flex size-9 items-center justify-center rounded-full border border-border bg-secondary text-xs font-semibold">
+            {initials || 'WU'}
+          </div>
+        </div>
+      </header>
+
+      <div className="flex">
+        <aside className="fixed left-0 top-16 hidden h-[calc(100vh-4rem)] w-64 flex-col border-r border-border bg-card px-5 py-6 md:flex">
+          <div className="mb-8 flex items-center gap-3">
+            <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+              <Terminal className="h-4 w-4" />
+            </span>
+            <div>
+              <h2 className="text-sm font-bold">Console</h2>
+              <p className="text-xs text-muted-foreground">Standard Plan</p>
+            </div>
+          </div>
+
+          <nav className="flex flex-1 flex-col gap-1">
+            {navItems.map(({ label, icon: Icon, active }) => (
+              <button
+                key={label}
+                type="button"
+                className={`flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium transition ${
+                  active
+                    ? 'bg-secondary text-secondary-foreground'
+                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            ))}
+            <div className="mt-6 flex flex-col gap-1 border-t border-border pt-6">
+              <button
+                type="button"
+                className="flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+              >
+                <BookOpen className="h-4 w-4" />
+                Documentation
+              </button>
+              <button
+                type="button"
+                className="flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+              >
+                <Code2 className="h-4 w-4" />
+                API Reference
+              </button>
+            </div>
+          </nav>
+
+          <div className="flex flex-col gap-3">
+            <Button type="button" className="h-11 justify-center rounded-md">
+              <Plus />
+              Deploy Function
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 justify-center rounded-md bg-card"
+              disabled={isSubmitting}
+              onClick={onSignOut}
+            >
+              {isSubmitting ? <Loader2 className="animate-spin" /> : <LogOut />}
+              Sign out
+            </Button>
+          </div>
+        </aside>
+
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 md:ml-64 md:max-w-[calc(100vw-16rem)] lg:px-8">
+          <div className="mx-auto flex max-w-7xl flex-col gap-7">
+            <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  <span>Console</span>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                  <span className="text-foreground">Functions</span>
+                </div>
+                <h1 className="text-3xl font-bold tracking-tight">Cloud Functions</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  Monitor and manage your WebAssembly workloads, runtime health, and deployment
+                  activity from one focused workspace.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" variant="outline" className="rounded-md bg-card">
+                  <Filter />
+                  Filter
+                </Button>
+                <Button type="button" variant="outline" className="rounded-md bg-card">
+                  <Download />
+                  Export CSV
+                </Button>
+                <Button type="button" className="rounded-md">
+                  <Play />
+                  Invoke
+                </Button>
+              </div>
+            </section>
+
+            <section className="grid gap-4 sm:grid-cols-2 min-[1480px]:grid-cols-4">
+              <MetricCard
+                title="Total Functions"
+                value="24"
+                detail="2%"
+                icon={Boxes}
+                trend="down"
+                visual={<div className="h-1.5 w-full overflow-hidden rounded-full bg-muted"><div className="h-full w-2/3 bg-primary" /></div>}
+              />
+              <MetricCard
+                title="Invocations"
+                value="1.2M"
+                suffix="/24h"
+                icon={Activity}
+                visual={<MiniBars />}
+              />
+              <MetricCard
+                title="Success Rate"
+                value="99.8%"
+                icon={CheckCircle2}
+                visual={
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="size-2 rounded-full bg-foreground" />
+                    Real-time health: Optimal
+                  </div>
+                }
+              />
+              <MetricCard
+                title="System Load"
+                value="42%"
+                suffix="Avg"
+                icon={Gauge}
+                visual={
+                  <div className="grid grid-cols-4 gap-1">
+                    <span className="h-2 rounded-sm bg-primary" />
+                    <span className="h-2 rounded-sm bg-primary" />
+                    <span className="h-2 rounded-sm bg-muted" />
+                    <span className="h-2 rounded-sm bg-muted" />
+                  </div>
+                }
+              />
+            </section>
+
+            <FunctionCatalog />
+
+            <section className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+              <Card className="rounded-md shadow-none">
+                <CardHeader>
+                  <CardTitle className="text-xl">Cluster Performance</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="relative flex h-56 items-end gap-2 overflow-hidden rounded-md bg-secondary px-5 pb-8 pt-6">
+                    {chartBars.map((height, index) => (
+                      <span
+                        key={`${height}-${index}`}
+                        className={`flex-1 rounded-t-sm ${
+                          index === 7 ? 'bg-primary' : index % 3 === 0 ? 'bg-foreground/35' : 'bg-foreground/20'
+                        }`}
+                        style={{ height: `${height}%` }}
+                      />
+                    ))}
+                    <span className="absolute bottom-4 left-5 rounded-sm border border-border bg-card px-2 py-1 text-xs font-semibold">
+                      Load Spike Detected (14:32)
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-md shadow-none">
+                <CardHeader>
+                  <CardTitle className="text-xl">Node Health</CardTitle>
+                  <CardDescription>Live capacity across active regions</CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4">
+                  {[
+                    ['eu-west-1a-01', '12% CPU', 'ok'],
+                    ['eu-west-1a-02', '45% CPU', 'ok'],
+                    ['eu-west-1b-01', '88% CPU', 'ok'],
+                    ['us-east-1a-04', 'Down', 'down'],
+                  ].map(([node, load, status]) => (
+                    <div key={node} className="flex items-center justify-between gap-3 text-sm">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className={`size-2 shrink-0 rounded-full ${
+                            status === 'down' ? 'bg-destructive' : 'bg-foreground'
+                          }`}
+                        />
+                        <span className={status === 'down' ? 'text-destructive' : 'text-foreground'}>
+                          {node}
+                        </span>
+                      </div>
+                      <span className={status === 'down' ? 'text-destructive' : 'text-muted-foreground'}>
+                        {load}
+                      </span>
+                    </div>
+                  ))}
+                  <Button type="button" variant="outline" className="mt-3 rounded-md bg-card">
+                    Manage Cluster
+                  </Button>
+                </CardContent>
+              </Card>
+            </section>
+          </div>
+        </main>
+      </div>
+
+      <nav className="fixed bottom-0 left-0 right-0 z-30 grid h-16 grid-cols-4 border-t border-border bg-background md:hidden">
+        {navItems.slice(1, 5).map(({ label, icon: Icon, active }) => (
+          <button
+            key={label}
+            type="button"
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium ${
+              active ? 'text-foreground' : 'text-muted-foreground'
+            }`}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+}
+
+function MetricCard({ title, value, suffix, detail, trend, icon: Icon, visual }) {
+  return (
+    <Card className="rounded-md shadow-none">
+      <CardHeader className="flex flex-row items-start justify-between gap-3 pb-3">
+        <CardDescription className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          {title}
+        </CardDescription>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-5">
+        <div className="flex items-baseline gap-2">
+          <span className="text-4xl font-bold tracking-tight">{value}</span>
+          {suffix && <span className="text-sm text-muted-foreground">{suffix}</span>}
+          {detail && (
+            <span className="flex items-center gap-1 text-sm font-medium text-destructive">
+              {trend === 'down' && <ArrowDown className="h-3.5 w-3.5" />}
+              {detail}
+            </span>
+          )}
+        </div>
+        {visual}
+      </CardContent>
+    </Card>
+  );
+}
+
+function MiniBars() {
+  const bars = [12, 22, 30, 42, 52, 46, 36, 24];
+
+  return (
+    <div className="flex items-end gap-1">
+      {bars.map((height, index) => (
+        <span
+          key={`${height}-${index}`}
+          className={`w-1.5 rounded-sm ${index === 4 ? 'bg-primary' : 'bg-foreground/30'}`}
+          style={{ height }}
+        />
+      ))}
+      <span className="ml-2 text-xs text-muted-foreground">+12% trend</span>
+    </div>
+  );
+}
+
+function FunctionCatalog() {
+  return (
+    <Card className="overflow-hidden rounded-md shadow-none">
+      <CardHeader className="flex flex-row items-center justify-between gap-4 border-b border-border">
+        <CardTitle className="text-xl">Function Catalog</CardTitle>
+        <div className="flex items-center gap-2">
+          <span className="rounded-sm border border-border bg-secondary px-2 py-1 text-xs font-medium">
+            Active (18)
+          </span>
+          <span className="rounded-sm border border-border bg-card px-2 py-1 text-xs font-medium text-muted-foreground">
+            Idle (6)
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] border-collapse text-left">
+            <thead>
+              <tr className="border-b border-border bg-secondary text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                <th className="px-5 py-4">Name</th>
+                <th className="px-5 py-4">Namespace</th>
+                <th className="px-5 py-4">Repository</th>
+                <th className="px-5 py-4">Deployed</th>
+                <th className="px-5 py-4 text-right">Invocations</th>
+                <th className="px-5 py-4 text-center">Replicas</th>
+                <th className="px-5 py-4" />
+              </tr>
+            </thead>
+            <tbody>
+              {functionRows.map((row) => (
+                <FunctionRow key={row.name} row={row} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex flex-col gap-3 border-t border-border bg-secondary px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-muted-foreground">Showing 1-4 of 24 functions</span>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" className="rounded-sm bg-card" disabled>
+              Previous
+            </Button>
+            <Button type="button" variant="outline" size="sm" className="rounded-sm bg-card">
+              Next
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FunctionRow({ row }) {
+  const Icon = row.icon;
+
+  return (
+    <tr className="group border-b border-border last:border-b-0 transition hover:bg-secondary/70">
+      <td className="px-5 py-5">
+        <div className="flex items-center gap-3">
+          <span className="flex size-10 items-center justify-center rounded-sm bg-secondary text-foreground">
+            <Icon className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="font-medium">{row.name}</div>
+            <div className="text-xs text-muted-foreground">{row.runtime}</div>
+          </div>
+        </div>
+      </td>
+      <td className="px-5 py-5">
+        <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground">
+          {row.namespace}
+        </span>
+      </td>
+      <td className="px-5 py-5 font-mono text-sm text-muted-foreground">{row.repository}</td>
+      <td className="px-5 py-5 text-sm text-muted-foreground">{row.deployed}</td>
+      <td className="px-5 py-5 text-right font-mono text-sm">{row.invocations}</td>
+      <td className="px-5 py-5 text-center">
+        <span className="inline-flex items-center gap-1.5 text-sm font-medium">
+          <span
+            className={`size-2 rounded-full ${
+              row.status === 'warn'
+                ? 'bg-destructive'
+                : row.status === 'idle'
+                  ? 'bg-muted-foreground'
+                  : 'bg-foreground'
+            }`}
+          />
+          <span className={row.status === 'warn' ? 'text-destructive' : ''}>{row.replicas}</span>
+        </span>
+      </td>
+      <td className="px-5 py-5 text-right">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={`Actions for ${row.name}`}
+          className="size-8 opacity-0 transition group-hover:opacity-100"
+        >
+          <MoreHorizontal />
+        </Button>
+      </td>
+    </tr>
+  );
+}
+
 function App() {
   const [mode, setMode] = useState('signin');
-  const [theme, setTheme] = useState('dark');
+  const [theme, setTheme] = useState('light');
   const [showPassword, setShowPassword] = useState(false);
   const [session, setSession] = useState(null);
   const [isSessionLoading, setIsSessionLoading] = useState(isSupabaseConfigured);
@@ -104,6 +631,16 @@ function App() {
 
   const isSignUp = mode === 'signup';
   const user = session?.user;
+  const previewUser =
+    import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === 'dashboard'
+      ? {
+          email: 'dheeraj@wasmdee.local',
+          user_metadata: {
+            full_name: 'Dheeraj Appaji',
+          },
+        }
+      : null;
+  const dashboardUser = user || previewUser;
 
   const updateForm = (event) => {
     const { name, value } = event.target;
@@ -228,14 +765,41 @@ function App() {
   const noticeClasses = {
     error: 'border-destructive/35 bg-destructive/10 text-destructive',
     info: 'border-border bg-muted text-muted-foreground',
-    success: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
+    success: 'border-foreground/20 bg-secondary text-foreground',
   };
+
+  if (isSessionLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background text-foreground">
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Checking session...
+        </div>
+      </main>
+    );
+  }
+
+  if (dashboardUser) {
+    return (
+      <DashboardShell
+        user={dashboardUser}
+        isSubmitting={isSubmitting}
+        onSignOut={handleSignOut}
+        theme={theme}
+        onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+      />
+    );
+  }
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <div className="grid h-screen overflow-hidden min-[900px]:grid-cols-[minmax(360px,0.86fr)_minmax(420px,1.14fr)]">
+      <div className="grid min-h-screen overflow-hidden min-[900px]:grid-cols-[minmax(360px,0.86fr)_minmax(420px,1.14fr)]">
         <section className="relative flex min-h-0 flex-col px-6 py-5 sm:px-10 lg:px-12">
-          <header className="flex h-10 items-center justify-end">
+          <header className="flex h-10 items-center justify-between">
+            <div className="flex items-center gap-3">
+              <LogoMark size="sm" />
+              <span className="text-lg font-bold tracking-tight">Wasmdee</span>
+            </div>
             <Button
               type="button"
               variant="ghost"
@@ -244,216 +808,176 @@ function App() {
               className="rounded-full text-muted-foreground hover:text-foreground"
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             >
-              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {theme === 'dark' ? <Sun /> : <Moon />}
             </Button>
           </header>
 
           <div className="flex min-h-0 flex-1 items-center justify-center py-4">
             <div className="w-full max-w-[400px]">
-              {isSessionLoading ? (
-                <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Checking session...
-                </div>
-              ) : user ? (
-                <div className="space-y-6">
-                  <div className="space-y-2.5">
-                    <p className="text-sm font-medium text-muted-foreground">Workspace access</p>
-                    <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-                      You're in.
-                    </h1>
-                    <p className="max-w-sm text-sm leading-6 text-muted-foreground">
-                      Signed in as {user.email}. The app can now load user-owned data through
-                      Supabase Auth.
-                    </p>
-                  </div>
+              <div className="mb-6 flex flex-col gap-2.5">
+                <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                  {isSignUp ? 'Create your account.' : 'Welcome back.'}
+                </h1>
+                <p className="max-w-sm text-sm leading-6 text-muted-foreground">
+                  {isSignUp
+                    ? 'Start your Wasmdee workspace with an email or a trusted social provider.'
+                    : 'Sign in to continue building, testing, and shipping your WebAssembly projects.'}
+                </p>
+              </div>
 
-                  <div className="rounded-xl border border-border bg-card p-4 text-sm">
-                    <div className="font-medium text-card-foreground">
-                      {user.user_metadata?.full_name || user.email}
-                    </div>
-                    <div className="mt-1 text-muted-foreground">{user.id}</div>
-                  </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 rounded-lg bg-card"
+                  disabled={isSubmitting}
+                  onClick={() => handleOAuth('google')}
+                >
+                  <GoogleIcon />
+                  Google
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 rounded-lg bg-card"
+                  disabled={isSubmitting}
+                  onClick={() => handleOAuth('github')}
+                >
+                  <GitHubIcon />
+                  GitHub
+                </Button>
+              </div>
 
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11 w-full rounded-lg bg-card"
-                    disabled={isSubmitting}
-                    onClick={handleSignOut}
-                  >
-                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
-                    Sign out
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  <div className="mb-6 space-y-2.5">
-                    <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-                      {isSignUp ? 'Create your account.' : 'Welcome back.'}
-                    </h1>
-                    <p className="max-w-sm text-sm leading-6 text-muted-foreground">
-                      {isSignUp
-                        ? 'Start your Wasmdee workspace with an email or a trusted social provider.'
-                        : 'Sign in to continue building, testing, and shipping your WebAssembly projects.'}
-                    </p>
-                  </div>
+              <div className="my-5 flex items-center gap-4 text-sm text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                Or use email
+                <span className="h-px flex-1 bg-border" />
+              </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-11 rounded-lg bg-card"
-                      disabled={isSubmitting}
-                      onClick={() => handleOAuth('google')}
-                    >
-                      <GoogleIcon />
-                      Google
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-11 rounded-lg bg-card"
-                      disabled={isSubmitting}
-                      onClick={() => handleOAuth('github')}
-                    >
-                      <GitHubIcon />
-                      GitHub
-                    </Button>
-                  </div>
-
-                  <div className="my-5 flex items-center gap-4 text-sm text-muted-foreground">
-                    <span className="h-px flex-1 bg-border" />
-                    Or use email
-                    <span className="h-px flex-1 bg-border" />
-                  </div>
-
-                  <form className="space-y-4" onSubmit={handleSubmit}>
-                    {isSignUp && (
-                      <div className="grid gap-2">
-                        <Label htmlFor="name">Full name</Label>
-                        <Input
-                          id="name"
-                          name="name"
-                          placeholder="Dheeraj Appaji"
-                          autoComplete="name"
-                          value={form.name}
-                          onChange={updateForm}
-                        />
-                      </div>
-                    )}
-
-                    <div className="grid gap-2">
-                      <Label htmlFor="email">Email</Label>
-                      <Input
-                        id="email"
-                        name="email"
-                        type="email"
-                        placeholder="you@example.com"
-                        autoComplete="email"
-                        value={form.email}
-                        onChange={updateForm}
-                        required
-                      />
-                    </div>
-
+              <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+                {isSignUp && (
                   <div className="grid gap-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="password">Password</Label>
-                      {!isSignUp && (
-                        <button
-                          type="button"
-                          className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                          disabled={isSubmitting}
-                          onClick={handlePasswordReset}
-                        >
-                          Forgot password?
-                        </button>
-                      )}
-                    </div>
-                    <div className="relative">
-                      <Input
-                        id="password"
-                        name="password"
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="Enter your password"
-                        autoComplete={isSignUp ? 'new-password' : 'current-password'}
-                        className="pr-11"
-                        value={form.password}
-                        onChange={updateForm}
-                        required
-                      />
+                    <Label htmlFor="name">Full name</Label>
+                    <Input
+                      id="name"
+                      name="name"
+                      placeholder="Dheeraj Appaji"
+                      autoComplete="name"
+                      value={form.name}
+                      onChange={updateForm}
+                    />
+                  </div>
+                )}
+
+                <div className="grid gap-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    value={form.email}
+                    onChange={updateForm}
+                    required
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Password</Label>
+                    {!isSignUp && (
                       <button
                         type="button"
-                        aria-label={showPassword ? 'Hide password' : 'Show password'}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
-                        onClick={() => setShowPassword(!showPassword)}
+                        className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                        disabled={isSubmitting}
+                        onClick={handlePasswordReset}
                       >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        Forgot password?
                       </button>
-                    </div>
+                    )}
                   </div>
-
-                    <Button
-                      type="submit"
-                      className="h-11 w-full rounded-lg text-sm font-semibold"
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <>
-                          {isSignUp ? 'Create account' : 'Sign in'}
-                          <ArrowRight className="h-4 w-4" />
-                        </>
-                      )}
-                    </Button>
-                  </form>
-
-                  {notice.text && (
-                    <p className={`mt-4 rounded-lg border px-3 py-2 text-sm ${noticeClasses[notice.tone]}`}>
-                      {notice.text}
-                    </p>
-                  )}
-
-                  <p className="mt-5 text-center text-sm text-muted-foreground">
-                    {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      name="password"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Enter your password"
+                      autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                      className="pr-11"
+                      value={form.password}
+                      onChange={updateForm}
+                      required
+                    />
                     <button
                       type="button"
-                      className="font-medium text-foreground underline-offset-4 hover:underline"
-                      onClick={() => {
-                        setMode(isSignUp ? 'signin' : 'signup');
-                        setNotice({ tone: 'info', text: '' });
-                      }}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
+                      onClick={() => setShowPassword(!showPassword)}
                     >
-                      {isSignUp ? 'Sign in' : 'Sign up'}
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
-                  </p>
-                </>
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  className="h-11 w-full rounded-lg text-sm font-semibold"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      {isSignUp ? 'Create account' : 'Sign in'}
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </form>
+
+              {notice.text && (
+                <p className={`mt-4 rounded-lg border px-3 py-2 text-sm ${noticeClasses[notice.tone]}`}>
+                  {notice.text}
+                </p>
               )}
+
+              <p className="mt-5 text-center text-sm text-muted-foreground">
+                {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+                <button
+                  type="button"
+                  className="font-medium text-foreground underline-offset-4 hover:underline"
+                  onClick={() => {
+                    setMode(isSignUp ? 'signin' : 'signup');
+                    setNotice({ tone: 'info', text: '' });
+                  }}
+                >
+                  {isSignUp ? 'Sign in' : 'Sign up'}
+                </button>
+              </p>
             </div>
           </div>
         </section>
 
         <section className="hidden min-h-0 p-2 min-[900px]:block">
-          <div className="relative h-full overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div className="relative h-full overflow-hidden rounded-lg border border-border bg-card shadow-sm">
             <img
               src={authVisual}
-              alt="A vintage computer resting in a sunlit meadow"
+              alt="A focused desktop workspace"
               className="absolute inset-0 h-full w-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/72 via-black/10 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 p-10 text-white">
-              <div className="mb-5 flex w-fit items-center gap-2 rounded-full bg-white/12 px-3 py-1 text-xs font-medium backdrop-blur">
-                <Check className="h-3.5 w-3.5" />
+              <div className="mb-5 flex w-fit items-center gap-2 rounded-md bg-white/12 px-3 py-1 text-xs font-medium backdrop-blur">
+                <CheckCircle2 className="h-3.5 w-3.5" />
                 Desktop native, web fast
               </div>
               <h2 className="max-w-xl text-3xl font-semibold leading-tight tracking-tight">
                 A quieter place to compile ideas into working software.
               </h2>
               <p className="mt-4 max-w-lg text-sm leading-6 text-white/78">
-                Keep the workflow focused with a native Wails shell, polished auth entry, and a theme
-                system ready for the rest of the product.
+                Keep the workflow focused with a native Wails shell, polished auth entry, and a
+                production-ready dashboard once you sign in.
               </p>
             </div>
           </div>
