@@ -1,24 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Edit, LineChart, Play } from 'lucide-react';
+import { Box, Play, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 
-const defaultBody = `{
-  "name": "Wasmdee User",
-  "action": "test_invocation"
-}`;
-
-export function InvokeFunction({ functionRows = [], invoked, response, selectedFunction, onEdit, onInvoke, onMetrics }) {
-  const [body, setBody] = useState(defaultBody);
+export function InvokeFunction({ functionRows = [], response, selectedFunction, onDeploy, onInvoke }) {
+  const [body, setBody] = useState('');
   const [argText, setArgText] = useState('');
+  const [selectedName, setSelectedName] = useState(selectedFunction?.name || '');
 
   useEffect(() => {
-    if (!selectedFunction) {
-      return;
-    }
+    setSelectedName(selectedFunction?.name || functionRows[0]?.name || '');
     setArgText('');
-  }, [selectedFunction?.name]);
+  }, [functionRows, selectedFunction?.name]);
+
+  const currentFunction = useMemo(
+    () => functionRows.find((row) => row.name === selectedName) || selectedFunction || null,
+    [functionRows, selectedFunction, selectedName]
+  );
 
   const args = useMemo(
     () =>
@@ -28,70 +27,48 @@ export function InvokeFunction({ functionRows = [], invoked, response, selectedF
         .filter(Boolean),
     [argText]
   );
-  const functionName = selectedFunction?.name || functionRows[0]?.name || 'no-function-selected';
-  const isReady = Boolean(selectedFunction);
+
+  if (functionRows.length === 0) {
+    return <EmptyInvoke onDeploy={onDeploy} />;
+  }
 
   const invoke = () => {
-    onInvoke?.({ name: functionName, body, args });
+    onInvoke?.({ name: currentFunction?.name, body, args });
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <section className="flex items-end justify-between gap-3">
+      <section className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="mb-1 text-xs text-muted-foreground">Namespaces / local / {functionName}</div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight">{functionName}</h1>
-            <span
-              className={`rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                isReady ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground'
-              }`}
-            >
-              {isReady ? 'Ready' : 'No module'}
-            </span>
-          </div>
+          <h1 className="text-2xl font-semibold tracking-tight">Invoke</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Send stdin and argv to a deployed WASI command module.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" className="h-8 rounded-md bg-card px-3 text-sm" onClick={onMetrics}>
-            <LineChart />
-            Metrics
-          </Button>
-          <Button type="button" variant="outline" className="h-8 rounded-md bg-card px-3 text-sm" onClick={onEdit}>
-            <Edit />
-            Edit
-          </Button>
-        </div>
-      </section>
-
-      <div className="flex overflow-hidden rounded-md border border-border bg-card">
-        <div className="flex h-10 items-center border-r border-border bg-secondary px-4 text-sm font-bold">POST</div>
-        <div className="flex flex-1 items-center px-4 font-mono text-sm text-muted-foreground">
-          local://wasmdee/invoke/<span className="text-foreground">{functionName}</span>
-        </div>
-        <Button type="button" className="h-10 rounded-none px-6" onClick={invoke} disabled={!isReady}>
+        <Button type="button" className="h-8 rounded-md px-3 text-sm" onClick={invoke} disabled={!currentFunction}>
           <Play />
           Invoke
         </Button>
-      </div>
+      </section>
 
-      <Card className="overflow-hidden rounded-md shadow-none">
-        <div className="flex border-b border-border">
-          {['Body', 'Args'].map((tab, index) => (
-            <button
-              key={tab}
-              type="button"
-              className={`h-10 px-5 text-sm font-medium ${
-                index === 0 ? 'border-b-2 border-foreground text-foreground' : 'text-muted-foreground'
-              }`}
+      <Card className="rounded-md shadow-none">
+        <CardHeader className="border-b border-border p-4">
+          <CardTitle className="text-base">Request</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 p-4">
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Function</span>
+            <select
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-foreground"
+              value={currentFunction?.name || ''}
+              onChange={(event) => setSelectedName(event.target.value)}
             >
-              {tab}
-            </button>
-          ))}
-          <span className="ml-auto flex items-center px-4 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            WASI stdin + argv
-          </span>
-        </div>
-        <CardContent className="grid gap-3 p-5">
+              {functionRows.map((row) => (
+                <option key={row.name} value={row.name}>
+                  {row.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <label className="grid gap-1.5">
             <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Arguments</span>
             <Input
@@ -101,10 +78,12 @@ export function InvokeFunction({ functionRows = [], invoked, response, selectedF
               onChange={(event) => setArgText(event.target.value)}
             />
           </label>
+
           <label className="grid gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Body</span>
+            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">stdin body</span>
             <textarea
-              className="min-h-[210px] resize-y rounded-md border border-border bg-background p-3 font-mono text-sm leading-6 outline-none focus:border-foreground"
+              className="min-h-[220px] resize-y rounded-md border border-border bg-background p-3 font-mono text-sm leading-6 outline-none focus:border-foreground"
+              placeholder="Request body passed to stdin"
               value={body}
               onChange={(event) => setBody(event.target.value)}
             />
@@ -112,17 +91,44 @@ export function InvokeFunction({ functionRows = [], invoked, response, selectedF
         </CardContent>
       </Card>
 
-      <div className="flex flex-col gap-2">
-        <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Response</h2>
-        <Card className="min-h-[190px] rounded-md shadow-none">
-          <CardContent className="flex min-h-[190px] items-center justify-center p-6 font-mono text-sm text-muted-foreground">
-            {invoked && response ? (
-              <pre className="w-full whitespace-pre-wrap text-foreground">{JSON.stringify(response, null, 2)}</pre>
-            ) : (
-              "Select a deployed function and invoke it to see stdout, stderr, exit code, and latency"
+      <Card className="rounded-md shadow-none">
+        <CardHeader className="border-b border-border p-4">
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="text-base">Response</CardTitle>
+            {response?.latency_ms !== undefined && (
+              <span className="font-mono text-xs text-muted-foreground">{Number(response.latency_ms).toFixed(3)}ms</span>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </CardHeader>
+        <CardContent className="min-h-[190px] p-4">
+          {response ? (
+            <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap rounded-md bg-secondary p-3 font-mono text-sm leading-6">
+              {JSON.stringify(response, null, 2)}
+            </pre>
+          ) : (
+            <div className="flex min-h-[150px] items-center justify-center text-center text-sm text-muted-foreground">
+              Invoke a function to inspect stdout, stderr, exit code, and latency.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function EmptyInvoke({ onDeploy }) {
+  return (
+    <div className="grid min-h-[520px] place-items-center rounded-md border border-border bg-card p-8 text-center">
+      <div>
+        <div className="mx-auto flex size-12 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+          <Box className="h-5 w-5" />
+        </div>
+        <h1 className="mt-4 text-xl font-semibold">No function to invoke</h1>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">Deploy a `.wasm` module, then send stdin and argv from this console.</p>
+        <Button type="button" className="mt-4 h-8 rounded-md px-3 text-sm" onClick={onDeploy}>
+          <Plus />
+          Deploy function
+        </Button>
       </div>
     </div>
   );

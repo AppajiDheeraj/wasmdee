@@ -22,13 +22,7 @@ export async function getRuntimeSnapshot() {
 
 export async function invokeRuntimeFunction(name, body, args) {
   if (!hasWailsRuntime()) {
-    return {
-      name,
-      stdout: `preview invocation for ${name || 'function'}\n${body}`,
-      stderr: '',
-      exit_code: 0,
-      latency_ms: 0,
-    };
+    throw new Error('Desktop runtime is not available in browser preview.');
   }
   return InvokeFunction(name, body, args);
 }

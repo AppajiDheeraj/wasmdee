@@ -1,29 +1,19 @@
-import { Bell, CircleHelp, Moon, Search, Sun } from 'lucide-react';
+import { Moon, Search, Sun } from 'lucide-react';
 import { LogoMark } from '@/components/brand/logo-mark';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { topNavItems } from '@/data/dashboard';
+import { sidebarItems } from '@/data/dashboard';
 
-export function TopBar({
-  activeView,
-  initials,
-  searchValue,
-  theme,
-  onHelp,
-  onNotifications,
-  onSearchChange,
-  onToggleTheme,
-  onViewChange,
-}) {
+export function TopBar({ activeView, initials, searchValue, theme, onSearchChange, onToggleTheme, onViewChange }) {
   return (
-    <header className="sticky top-0 z-30 flex h-12 items-center justify-between border-b border-border bg-background px-4">
-      <div className="flex items-center gap-5">
-        <div className="flex items-center gap-2.5">
+    <header className="sticky top-0 z-30 flex h-12 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur">
+      <div className="flex min-w-0 items-center gap-5">
+        <button type="button" className="flex shrink-0 items-center gap-2.5" onClick={() => onViewChange('dashboard')}>
           <LogoMark size="sm" />
-          <span className="text-base font-bold tracking-tight">Wasmdee</span>
-        </div>
-        <nav className="hidden h-12 items-center gap-4 md:flex">
-          {topNavItems.map((item) => (
+          <span className="text-base font-semibold tracking-tight">Wasmdee</span>
+        </button>
+        <nav className="hidden h-12 items-center gap-4 lg:flex">
+          {sidebarItems.map((item) => (
             <button
               key={item.id}
               type="button"
@@ -40,29 +30,16 @@ export function TopBar({
         </nav>
       </div>
 
-      <div className="flex items-center gap-1.5">
-        <div className="relative hidden lg:block">
+      <div className="flex items-center gap-2">
+        <div className="relative hidden md:block">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
-            className="h-8 w-64 rounded-md bg-card pl-8 text-sm"
-            placeholder="Search functions..."
+            className="h-8 w-56 rounded-md bg-card pl-8 text-sm lg:w-72"
+            placeholder="Search functions"
             value={searchValue}
             onChange={(event) => onSearchChange(event.target.value)}
           />
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          aria-label="Notifications"
-          onClick={onNotifications}
-        >
-          <Bell />
-        </Button>
-        <Button type="button" variant="ghost" size="icon" className="size-8" aria-label="Help" onClick={onHelp}>
-          <CircleHelp />
-        </Button>
         <Button
           type="button"
           variant="ghost"
@@ -73,7 +50,7 @@ export function TopBar({
         >
           {theme === 'dark' ? <Sun /> : <Moon />}
         </Button>
-        <div className="flex size-8 items-center justify-center rounded-full border border-border bg-secondary text-[11px] font-semibold">
+        <div className="flex size-8 items-center justify-center rounded-md border border-border bg-card text-[11px] font-semibold">
           {initials || 'WU'}
         </div>
       </div>

@@ -3,7 +3,7 @@ import { sidebarItems } from '@/data/dashboard';
 export function MobileNav({ activeView, onViewChange }) {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-30 grid h-14 grid-cols-4 border-t border-border bg-background md:hidden">
-      {sidebarItems.slice(0, 4).map(({ id, label, icon: Icon }) => (
+      {sidebarItems.map(({ id, label, icon: Icon }) => (
         <button
           key={id}
           type="button"

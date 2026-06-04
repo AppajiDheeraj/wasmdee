@@ -1,6 +1,6 @@
 import { LogOut, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { sidebarItems, sidebarUtilityItems } from '@/data/dashboard';
+import { sidebarItems } from '@/data/dashboard';
 
 export function Sidebar({ activeView, isSubmitting, onDeploy, onSignOut, onViewChange }) {
   return (
@@ -11,35 +11,22 @@ export function Sidebar({ activeView, isSubmitting, onDeploy, onSignOut, onViewC
             key={id}
             type="button"
             onClick={() => onViewChange(id)}
-            className={`flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] font-medium transition ${
+            className={`flex h-9 items-center gap-2 rounded-md px-2.5 text-[13px] font-medium transition ${
               activeView === id
                 ? 'bg-secondary text-secondary-foreground'
                 : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
             }`}
           >
-            <Icon className="h-3.5 w-3.5" />
+            <Icon className="h-4 w-4" />
             {label}
           </button>
         ))}
-        <div className="mt-4 flex flex-col gap-1 border-t border-border pt-4">
-          {sidebarUtilityItems.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => onViewChange(id)}
-              className="flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] font-medium text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
-          ))}
-        </div>
       </nav>
 
       <div className="flex flex-col gap-2">
         <Button type="button" className="h-9 justify-center rounded-md text-sm" onClick={onDeploy}>
           <Plus />
-          Deploy Function
+          Deploy
         </Button>
         <Button
           type="button"
