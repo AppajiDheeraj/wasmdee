@@ -1,0 +1,57 @@
+---
+title: "wasmdee invoke"
+description: "Invoke a deployed function from the command line"
+icon: "play"
+---
+
+## Usage
+
+```bash
+wasmdee invoke <name> [flags]
+```
+
+## Description
+
+Executes a deployed function by name. The invocation:
+
+1. Looks up the function in the local SQLite registry
+2. Creates a fresh Wazero engine (or reuses the file-backed compilation cache)
+3. Instantiates the compiled module with WASI
+4. Passes `--data` as stdin and `--arg` values as argv
+5. Captures stdout, stderr, and exit code
+
+## Flags
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--data` | `-d` | `""` | Stdin payload sent to the function |
+| `--arg` | | | Argument passed as argv; repeatable for multiple args |
+| `--timeout` | | `5s` | Maximum invocation duration |
+| `--verbose` | `-v` | `false` | Print exit code and latency after output |
+
+## Examples
+
+```bash
+# Simple invocation with JSON payload
+wasmdee invoke hello --data '{"name":"world"}'
+
+# Pass multiple arguments
+wasmdee invoke transform --arg input.json --arg --format=csv
+
+# Set a longer timeout for heavy computation
+wasmdee invoke ml-predict --data @input.bin --timeout 30s
+
+# Verbose mode shows timing
+wasmdee invoke hello --data "test" --verbose
+# → Hello test
+# → exit_code=0 latency=1.23ms
+```
+
+## Output
+
+Standard output from the function is printed directly to your terminal. Standard error goes to stderr. With `--verbose`, exit code and latency are appended.
+
+## Exit Codes
+
+- `0` — function completed successfully
+- Non-zero — the command returns an error: `function exited with code N`

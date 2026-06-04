@@ -1,0 +1,103 @@
+---
+title: "POST /invoke/{name}"
+description: "Invoke a deployed function over HTTP"
+icon: "play"
+---
+
+## Request
+
+```
+POST /invoke/{name}
+```
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `name` | string | The deployed function name |
+
+### Query Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `arg` | string (repeatable) | Arguments passed as argv to the function |
+
+### Request Body
+
+The raw request body is passed as **stdin** to the Wasm function. Content type is not interpreted — it's passed as raw bytes.
+
+## Response
+
+### Success (200)
+
+```json
+{
+  "name": "hello",
+  "stdout": "Hello, world!",
+  "stderr": "",
+  "exit_code": 0,
+  "latency_ms": 0.42
+}
+```
+
+### Function Error (502)
+
+Returned when the function exits with a non-zero code:
+
+```json
+{
+  "name": "hello",
+  "stdout": "",
+  "stderr": "error: invalid input",
+  "exit_code": 1,
+  "latency_ms": 1.23
+}
+```
+
+### Queue Full (429)
+
+```json
+{
+  "error": "dispatcher queue is full"
+}
+```
+
+### Not Found (404)
+
+```json
+{
+  "error": "function not found: unknown-func"
+}
+```
+
+## Examples
+
+### Basic invocation
+
+```bash
+curl -X POST http://127.0.0.1:8080/invoke/hello \
+  -d '{"name": "world"}'
+```
+
+### With arguments
+
+```bash
+curl -X POST 'http://127.0.0.1:8080/invoke/transform?arg=--format&arg=csv' \
+  -d 'input data'
+```
+
+### Binary payload
+
+```bash
+curl -X POST http://127.0.0.1:8080/invoke/process \
+  --data-binary @input.bin
+```
+
+## Behavior
+
+1. Resolves function metadata from the SQLite registry
+2. Submits invocation to the bounded dispatcher queue
+3. A worker executes the function through the shared Wazero engine
+4. A fresh module instance is created (isolated linear memory)
+5. Request body is piped to stdin, query `arg` values become argv
+6. stdout, stderr, exit code, and latency are captured and returned as JSON

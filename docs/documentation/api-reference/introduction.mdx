@@ -1,33 +1,56 @@
 ---
-title: 'Introduction'
-description: 'Example section for showcasing API endpoints'
+title: "HTTP Gateway API"
+description: "REST endpoints exposed by wasmdee serve"
+icon: "globe"
 ---
 
-<Note>
-  If you're not looking to build API reference documentation, you can delete
-  this section by removing the api-reference folder.
-</Note>
+## Overview
 
-## Welcome
+When you run `wasmdee serve`, an HTTP gateway exposes endpoints for function invocation and runtime observability. The gateway uses the same Wazero engine and bounded dispatcher as CLI invocations.
 
-There are two ways to build API documentation: [OpenAPI](https://mintlify.com/docs/api-playground/openapi/setup) and [MDX components](https://mintlify.com/docs/api-playground/mdx/configuration). For the starter kit, we are using the following OpenAPI specification.
+## Base URL
 
-<Card
-  title="Plant Store Endpoints"
-  icon="leaf"
-  href="https://github.com/mintlify/starter/blob/main/api-reference/openapi.json"
->
-  View the OpenAPI specification file
-</Card>
+```
+http://127.0.0.1:8080
+```
 
-## Authentication
+Configurable with `--addr`.
 
-All API endpoints are authenticated using Bearer tokens and picked up from the specification file.
+## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/invoke/{name}` | Invoke a deployed function |
+| `GET` | `/functions` | List all deployed functions |
+| `GET` | `/runtime` | Full runtime telemetry |
+| `GET` | `/healthz` | Health check |
+
+## Common Response Format
+
+All endpoints return JSON with `Content-Type: application/json`.
+
+### Error Response
 
 ```json
-"security": [
-  {
-    "bearerAuth": []
-  }
-]
+{
+  "error": "function not found: unknown-func"
+}
 ```
+
+## HTTP Status Codes
+
+| Code | Meaning |
+|---|---|
+| `200` | Success |
+| `400` | Bad request (missing function name, invalid body) |
+| `404` | Function not found in registry |
+| `429` | Too many requests (dispatcher queue full) |
+| `502` | Function exited with non-zero code |
+| `503` | Service unavailable (dispatcher closed) |
+| `500` | Internal server error |
+
+## Request Limits
+
+- Maximum request body: **8 MB**
+- Read header timeout: **5 seconds**
+- Invocation timeout: configurable via `--invoke-timeout` (default 10s)

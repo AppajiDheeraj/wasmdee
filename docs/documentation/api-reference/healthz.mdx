@@ -1,0 +1,67 @@
+---
+title: "GET /healthz"
+description: "Health check endpoint with engine and dispatcher status"
+icon: "heart-pulse"
+---
+
+## Request
+
+```
+GET /healthz
+```
+
+No parameters required.
+
+## Response
+
+### Success (200)
+
+```json
+{
+  "status": "ok",
+  "engine": {
+    "compiled_modules": 3,
+    "compile_requests": 5,
+    "compile_hits": 2,
+    "evictions": 0,
+    "invocations": 150,
+    "host_calls": 0,
+    "host_call_failures": 0
+  },
+  "dispatcher": {
+    "workers": 8,
+    "min_workers": 2,
+    "max_workers": 32,
+    "accepted": 150,
+    "rejected": 0,
+    "scale_ups": 6,
+    "scale_downs": 0
+  }
+}
+```
+
+## Usage
+
+This endpoint is designed for load balancer health checks and monitoring systems. It returns a lightweight view of the runtime without per-function telemetry (use `/runtime` for that).
+
+## Example
+
+```bash
+# Simple health check
+curl -s http://127.0.0.1:8080/healthz | jq .status
+# → "ok"
+
+# Kubernetes liveness probe
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+```
+
+## Notes
+
+- Always returns HTTP 200 if the gateway is alive and listening
+- The `engine` and `dispatcher` objects provide insight into current resource utilization
+- For per-function metrics, use `GET /runtime` instead

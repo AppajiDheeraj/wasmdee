@@ -1,0 +1,135 @@
+---
+title: "Configuration"
+description: "Environment variables, state directories, and tunable parameters"
+icon: "gear"
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `WASMDEE_HOME` | OS-specific app data dir | Override the base directory for all wasmdee state |
+
+### Default State Directory
+
+| OS | Path |
+|---|---|
+| macOS | `~/Library/Application Support/Wasmdee` |
+| Linux | `~/.local/share/Wasmdee` |
+| Windows | `%APPDATA%/Wasmdee` |
+
+---
+
+## Directory Structure
+
+Under `WASMDEE_HOME` (or the default), wasmdee creates:
+
+```
+Wasmdee/
+├── state/
+│   ├── modules/        # Content-addressed .wasm file store
+│   ├── cache/          # Wazero file-backed compilation cache
+│   └── wasmdee.db      # SQLite function registry
+└── logs/               # Runtime logs (future)
+```
+
+---
+
+## Gateway Configuration
+
+All gateway tuning is done through CLI flags on `wasmdee serve`:
+
+### Worker Pool
+
+| Flag | Default | Description |
+|---|---|---|
+| `--workers` | `NumCPU * 4` | Fixed worker count (ignored if min/max set) |
+| `--min-workers` | `0` | Minimum workers kept running |
+| `--max-workers` | `0` | Maximum workers for autoscaling |
+| `--scale-down-after` | `30s` | Idle time before retiring extra workers |
+
+### Queue & Timeouts
+
+| Flag | Default | Description |
+|---|---|---|
+| `--queue-size` | `1024` | Max pending invocations |
+| `--invoke-timeout` | `10s` | Per-invocation time limit |
+
+### Warm Pool
+
+| Flag | Default | Description |
+|---|---|---|
+| `--preload` | `true` | Compile all functions at startup |
+| `--scale-to-zero-after` | `0` (disabled) | Evict idle compiled modules |
+
+### Network
+
+| Flag | Default | Description |
+|---|---|---|
+| `--addr` | `127.0.0.1:8080` | Listen address and port |
+
+---
+
+## Example Configurations
+
+### Development (minimal resources)
+
+```bash
+wasmdee serve \
+  --min-workers 1 \
+  --max-workers 4 \
+  --queue-size 64 \
+  --scale-to-zero-after 30s
+```
+
+### Production (high throughput)
+
+```bash
+wasmdee serve \
+  --addr 0.0.0.0:8080 \
+  --min-workers 8 \
+  --max-workers 128 \
+  --queue-size 4096 \
+  --invoke-timeout 30s \
+  --scale-down-after 60s
+```
+
+### CI / Testing
+
+```bash
+export WASMDEE_HOME=/tmp/wasmdee-test
+wasmdee serve \
+  --min-workers 2 \
+  --max-workers 8 \
+  --queue-size 256 \
+  --scale-to-zero-after 10s
+```
+
+---
+
+## Function Configuration
+
+Each function can have a `wasmdee.toml` declaring capabilities:
+
+```toml
+[function]
+name = "my-function"
+
+[capabilities]
+network = true
+kv = false
+fs = ["./data", "/tmp"]
+```
+
+See [Writing Functions](/guides/writing-functions) for details on the capability model.
+
+---
+
+## CLI Invoke Configuration
+
+| Flag | Default | Description |
+|---|---|---|
+| `--data` / `-d` | `""` | Stdin payload |
+| `--arg` | | Argv values (repeatable) |
+| `--timeout` | `5s` | Max invocation duration |
+| `--verbose` / `-v` | `false` | Print exit code and latency |

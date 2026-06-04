@@ -1,0 +1,31 @@
+---
+title: "wasmdee list"
+description: "List all deployed functions in the local registry"
+icon: "list"
+---
+
+## Usage
+
+```bash
+wasmdee list
+```
+
+## Description
+
+Displays all functions registered in the local SQLite function store. Shows the function name, creation timestamp, and module path.
+
+## Output
+
+```
+NAME         CREATED                    MODULE
+hello        2025-06-01 14:23:45       /state/modules/a1b2c3...wasm
+fibonacci    2025-06-01 15:01:12       /state/modules/d4e5f6...wasm
+transform    2025-06-02 09:45:00       /state/modules/g7h8i9...wasm
+```
+
+## Notes
+
+- Functions are stored in a local SQLite database
+- The module path points to the content-addressed copy in the module store
+- Use `wasmdee deploy` to add new functions
+- The same list is available over HTTP at `GET /functions` when the gateway is running

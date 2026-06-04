@@ -1,0 +1,57 @@
+---
+title: "GET /functions"
+description: "List all deployed functions"
+icon: "list"
+---
+
+## Request
+
+```
+GET /functions
+```
+
+No parameters required.
+
+## Response
+
+### Success (200)
+
+Returns an array of all registered functions:
+
+```json
+[
+  {
+    "Name": "hello",
+    "WasmPath": "/path/to/state/modules/a1b2c3d4.wasm",
+    "Capabilities": "",
+    "CreatedAt": 1717250625
+  },
+  {
+    "Name": "fibonacci",
+    "WasmPath": "/path/to/state/modules/e5f6a7b8.wasm",
+    "Capabilities": "",
+    "CreatedAt": 1717251072
+  }
+]
+```
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `Name` | string | Function name (used in `/invoke/{name}`) |
+| `WasmPath` | string | Path to the stored `.wasm` module |
+| `Capabilities` | string | Declared capabilities (from `wasmdee.toml`) |
+| `CreatedAt` | int64 | Unix timestamp of deployment |
+
+## Example
+
+```bash
+curl http://127.0.0.1:8080/functions
+```
+
+## Notes
+
+- This returns the same data as `wasmdee list` in the CLI
+- The list includes all functions regardless of whether they are currently compiled in the warm pool
+- An empty registry returns `[]`

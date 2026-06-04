@@ -1,0 +1,88 @@
+---
+title: "wasmdee bench"
+description: "Benchmark Wasm functions locally or compare against HTTP endpoints"
+icon: "chart-line"
+---
+
+## Usage
+
+```bash
+wasmdee bench <wasm-path-or-http-url> [flags]
+```
+
+## Description
+
+Measures function invocation latency with cold, rehydrate, and warm phases for local Wasm modules, or warm-only HTTP latency for remote endpoints. Produces histogram statistics for apples-to-apples comparisons between wasmdee and container-based platforms.
+
+## Modes
+
+| Target | Mode | What's Measured |
+|---|---|---|
+| `./hello.wasm` | `wasmdee-local` | Cold start, rehydrate, warm dispatch |
+| `http://...` | `http` | Warm HTTP round-trip only |
+
+## Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--name` | filename | Function name for local benchmarks |
+| `--label` | mode | Human label for the report (e.g., "openfaas") |
+| `--data` / `-d` | `""` | Request body or stdin payload |
+| `--arg` | | Argv arguments for local Wasm (repeatable) |
+| `--iterations` | `100` | Measured warm invocations |
+| `--cold-runs` | `5` | Fresh-engine cold runs |
+| `--warmup` | `10` | Warmup invocations excluded from results |
+| `--concurrency` | `1` | Parallel measured invocations |
+| `--timeout` | `5s` | Per-invocation timeout |
+| `--min-workers` | `1` | Minimum dispatcher workers |
+| `--max-workers` | `NumCPU * 4` | Maximum dispatcher workers |
+| `--scale-down-after` | `5s` | Idle worker retirement for benchmark |
+| `--scale-to-zero-after` | `0` | Module eviction (0 = disabled) |
+| `--json` | `false` | Machine-readable JSON output |
+
+## Examples
+
+```bash
+# Benchmark a local Wasm module
+wasmdee bench ./hello.wasm --iterations 1000 --warmup 100 --concurrency 8
+
+# JSON output for CI/scripting
+wasmdee bench ./hello.wasm --iterations 500 --json > results.json
+
+# Compare wasmdee HTTP gateway vs OpenFaaS
+wasmdee bench http://127.0.0.1:8080/invoke/hello --label wasmdee-http
+wasmdee bench http://127.0.0.1:8081/function/hello --label openfaas
+```
+
+## Output (Text Mode)
+
+```
+benchmark: wasmdee-local
+target: ./hello.wasm
+iterations=1000 warmup=100 concurrency=8
+
+cold      count=5 errors=0 avg=8.234ms p50=7.891ms p95=10.123ms p99=10.123ms min=6.543ms max=10.456ms throughput=120.3/s
+rehydrate count=5 errors=0 avg=1.456ms p50=1.234ms p95=2.345ms p99=2.345ms min=0.987ms max=2.567ms throughput=680.2/s
+warm      count=1000 errors=0 avg=0.089ms p50=0.076ms p95=0.156ms p99=0.234ms min=0.045ms max=0.567ms throughput=89123.4/s
+
+engine: compiled=1 compile_requests=2 hits=1 evictions=5 invocations=1105 host_calls=0 host_call_failures=0
+dispatcher: workers=8 min=1 max=32 accepted=1105 rejected=0 scale_ups=7 scale_downs=0
+```
+
+## Measurement Phases
+
+### Cold
+A fresh Wazero engine and empty compilation cache for each run. Measures the worst-case first-invocation latency including full compilation.
+
+### Rehydrate
+Evicts the compiled module from the in-process warm pool but preserves the file-backed compilation cache. Measures reload cost when a function was scaled to zero.
+
+### Warm
+Uses the long-lived engine with the compiled module already in memory. Measures the dispatcher + instantiation + execution path — this is the steady-state latency.
+
+## Notes
+
+- Cold and rehydrate phases are only measured for local Wasm targets
+- HTTP mode is intentionally simple: it does a POST and measures round-trip time
+- Use `--json` output for automated comparison scripts
+- See [Benchmarking Guide](/guides/benchmarking) before publishing performance claims

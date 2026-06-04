@@ -1,0 +1,170 @@
+---
+title: "Writing Functions"
+description: "How to write, compile, and configure functions for wasmdee"
+icon: "code"
+---
+
+## The WASI Contract
+
+wasmdee currently runs **WASI command modules**. Your function is a standard program with a `main()` / `_start` entrypoint:
+
+| Channel | Purpose |
+|---|---|
+| **stdin** | Receives the request body (from `--data` or HTTP POST body) |
+| **stdout** | Your function's response (returned to the caller) |
+| **stderr** | Logs and diagnostics (captured but not returned as response) |
+| **argv** | Optional arguments (from `--arg` or `?arg=` query params) |
+| **exit code** | 0 = success, non-zero = error |
+
+---
+
+## Supported Languages
+
+Any language that compiles to `wasm32-wasi` works. Here are the tested paths:
+
+### Go (TinyGo)
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "io"
+    "os"
+)
+
+func main() {
+    input, _ := io.ReadAll(os.Stdin)
+    
+    var req map[string]string
+    json.Unmarshal(input, &req)
+    
+    fmt.Printf("Hello, %s!", req["name"])
+}
+```
+
+```bash
+tinygo build -o hello.wasm -target wasi .
+wasmdee deploy hello.wasm --name hello
+```
+
+<Note>
+Use TinyGo rather than standard Go for Wasm. Standard Go's WASI support produces larger binaries and has limited compatibility.
+</Note>
+
+### Rust
+
+```rust
+use std::io::{self, Read, Write};
+
+fn main() {
+    let mut input = String::new();
+    io::stdin().read_to_string(&mut input).unwrap();
+    
+    let output = format!("Processed: {}", input.len());
+    io::stdout().write_all(output.as_bytes()).unwrap();
+}
+```
+
+```bash
+cargo build --target wasm32-wasi --release
+wasmdee deploy target/wasm32-wasi/release/my_func.wasm --name process
+```
+
+### Zig
+
+```zig
+const std = @import("std");
+
+pub fn main() !void {
+    const stdin = std.io.getStdIn().reader();
+    const stdout = std.io.getStdOut().writer();
+    
+    var buf: [4096]u8 = undefined;
+    const n = try stdin.read(&buf);
+    
+    try stdout.print("Got {d} bytes\n", .{n});
+}
+```
+
+```bash
+zig build-exe -target wasm32-wasi src/main.zig
+wasmdee deploy main.wasm --name zigfunc
+```
+
+### AssemblyScript
+
+```typescript
+import { stdin, stdout } from "as-wasi/assembly";
+
+const input = stdin.readString();
+stdout.write("Echo: " + input);
+```
+
+---
+
+## Function Capabilities
+
+Each function can declare system access in a `wasmdee.toml` alongside the source:
+
+```toml
+[function]
+name = "my-function"
+
+[capabilities]
+network = false
+kv = false
+fs = []
+```
+
+| Capability | Values | Description |
+|---|---|---|
+| `network` | `true` / `false` | Allow outbound network calls |
+| `kv` | `true` / `false` | Access the key-value store (planned) |
+| `fs` | Array of paths | Filesystem directories the function can access |
+
+Everything not listed is **denied by default**.
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Keep functions small">
+    Wasm modules compile faster and instantiate with less memory when they're small. Strip debug symbols and avoid large standard libraries where possible.
+  </Accordion>
+
+  <Accordion title="Use stdin/stdout for I/O">
+    The current runtime contract is stdin → stdout. Don't rely on filesystem access or network unless you've declared it in capabilities.
+  </Accordion>
+
+  <Accordion title="Handle errors via exit code">
+    Return exit code 0 for success. Non-zero exit codes are reported as errors to the caller. Write diagnostic information to stderr.
+  </Accordion>
+
+  <Accordion title="Avoid global mutable state">
+    Each invocation gets a fresh module instance with zero'd memory. There's no state carried between invocations — this is by design for isolation.
+  </Accordion>
+
+  <Accordion title="Test locally before deploying">
+    You can run your Wasm module directly with Wasmtime or wasmer for quick iteration before deploying to wasmdee.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Module Size Guidelines
+
+| Size | Impact |
+|---|---|
+| < 100 KB | Excellent — near-instant cold compile |
+| 100 KB – 1 MB | Good — cold compile in low milliseconds |
+| 1 – 10 MB | Acceptable — cold compile may be noticeable |
+| > 10 MB | Avoid — consider splitting or optimizing |
+
+Use `wasm-opt` from [Binaryen](https://github.com/WebAssembly/binaryen) to shrink modules:
+
+```bash
+wasm-opt -O3 -o optimized.wasm input.wasm
+```

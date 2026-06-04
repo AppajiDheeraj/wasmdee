@@ -1,133 +1,62 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
-icon: 'star'
+title: "wasmdee"
+description: "Self-hostable serverless functions powered by WebAssembly. One binary, no containers, sub-millisecond warm invocations."
+icon: "bolt"
 ---
 
-## Setting up
+## What is wasmdee?
 
-Get your documentation site up and running in minutes.
+wasmdee is a Wasm-native serverless function platform. Deploy a `.wasm` file, get an HTTP trigger, and run it through a shared in-process WebAssembly runtime instead of spinning up a container per function.
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+Built on ideas from [Faasm](https://github.com/faasm/faasm), [Catalyzer](https://www.usenix.org/conference/atc20/presentation/du), [Nightcore](https://www.usenix.org/conference/asplos21/presentation/jia), and [Cloudflare Workers](https://workers.cloudflare.com/) — designed to beat the cold-start and resource overhead of container-based FaaS platforms like OpenFaaS and AWS Lambda.
 
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Deploy and invoke your first Wasm function in under 2 minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Core Concepts" icon="lightbulb" href="/concepts">
+    Understand the runtime model, isolation guarantees, and architecture.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="CLI Reference" icon="terminal" href="/cli/deploy">
+    Full reference for deploy, invoke, serve, bench, and list commands.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="HTTP API" icon="globe" href="/api-reference/introduction">
+    REST endpoints exposed by the wasmdee gateway.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+---
 
-Everything you need to create world-class documentation.
+## Why wasmdee?
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+| Traditional FaaS | wasmdee |
+|---|---|
+| Container image per function | Single `.wasm` binary |
+| Docker/Kubernetes scheduling | In-process Wasm isolation |
+| 100ms+ cold starts | Sub-millisecond warm, under 10ms rehydrate |
+| GB-scale memory per function | KB-scale Wasm linear memory |
+| Network proxy between functions | Direct in-process host calls |
 
-## Make your content agent ready
+---
 
-Make your docs work for humans and AI agents alike.
+## Current status
 
-<Columns cols={2}>
-  <Card
-    title="Prompt component"
-    icon="robot"
-    href="/agent-ready/prompt"
-  >
-    Embed shareable AI prompts readers can copy or open in Cursor.
-  </Card>
-  <Card
-    title="Visibility"
-    icon="eye"
-    href="/agent-ready/visibility"
-  >
-    Show different content to humans and agents reading your docs.
-  </Card>
-  <Card
-    title="Contextual menu"
-    icon="bolt"
-    href="/agent-ready/contextual"
-  >
-    Give readers one-click access to Claude, ChatGPT, Cursor, and more.
-  </Card>
-  <Card
-    title="AI coding tools"
-    icon="wand-magic-sparkles"
-    href="/ai-tools/claude-code"
-  >
-    Set up Claude Code, Cursor, or Windsurf with Mintlify's skill.
-  </Card>
-</Columns>
+wasmdee is actively building. The core runtime is working and benchmarkable.
 
-## Need inspiration?
+| Feature | Status |
+|---|---|
+| Deploy + invoke + list | Working |
+| HTTP gateway with bounded dispatcher | Working |
+| Compiled-module warm pool | Working |
+| Worker autoscaling + scale-to-zero | Working |
+| Preload + per-function telemetry | Working |
+| Benchmark command (local + HTTP) | Working |
+| In-process host-call ABI | Initial |
+| Reusable faaslet instance pool | Planned |
+| Snapshot + CoW cold-start | Research |
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+---
+
+## Tech stack
+
+Go · [Wazero](https://wazero.io) · Cobra · SQLite · Wails · React

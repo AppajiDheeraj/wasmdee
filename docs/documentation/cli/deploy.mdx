@@ -1,0 +1,54 @@
+---
+title: "wasmdee deploy"
+description: "Register a WebAssembly function in the local runtime"
+icon: "upload"
+---
+
+## Usage
+
+```bash
+wasmdee deploy <file.wasm> [flags]
+```
+
+## Description
+
+Deploys a `.wasm` file to the local wasmdee runtime. The command:
+
+1. Validates the file has a `.wasm` extension
+2. Computes a SHA-256 hash of the module
+3. Copies the file to the content-addressed module store
+4. Compiles it through Wazero to verify it's valid WebAssembly
+5. Registers the function in the local SQLite registry
+
+If compilation fails, the deployment is rejected and no record is created.
+
+## Flags
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--name` | `-n` | filename without extension | Human-readable function name |
+
+## Examples
+
+```bash
+# Deploy with explicit name
+wasmdee deploy ./build/hello.wasm --name hello
+
+# Deploy using filename as the function name
+wasmdee deploy fibonacci.wasm
+# → registers as "fibonacci"
+```
+
+## Output
+
+```
+deployed hello
+module /path/to/state/modules/abc123...def.wasm
+```
+
+## Notes
+
+- Only `.wasm` files are accepted
+- Re-deploying with the same name updates the function record
+- The module store is content-addressed: identical binaries share storage
+- Compilation validation catches malformed modules before they enter the registry

@@ -1,0 +1,127 @@
+---
+title: "Benchmarking"
+description: "How to measure and compare wasmdee performance against container-based platforms"
+icon: "stopwatch"
+---
+
+## Philosophy
+
+wasmdee ships a built-in `bench` command so performance claims are always backed by reproducible measurements. The command measures three distinct latency phases and can also benchmark any HTTP endpoint for fair comparison.
+
+---
+
+## Latency Phases
+
+### Cold
+
+A fresh Wazero engine with an empty compilation cache. This is the absolute worst case — the first time a function is ever invoked on a machine.
+
+### Rehydrate
+
+The compiled module is evicted from the in-memory warm pool, but the file-backed compilation cache remains. This simulates what happens after a scale-to-zero event.
+
+### Warm
+
+The compiled module is already in memory. The only work is instantiating a fresh module instance (allocating linear memory) and running `_start`. This is the steady-state path.
+
+---
+
+## Running Benchmarks
+
+### Local Wasm Module
+
+```bash
+wasmdee bench ./hello.wasm \
+  --iterations 1000 \
+  --warmup 100 \
+  --concurrency 8 \
+  --cold-runs 10
+```
+
+### HTTP Endpoint (wasmdee gateway)
+
+```bash
+wasmdee serve &
+wasmdee bench http://127.0.0.1:8080/invoke/hello \
+  --label wasmdee-http \
+  --iterations 1000 \
+  --concurrency 16
+```
+
+### HTTP Endpoint (OpenFaaS or Docker comparison)
+
+```bash
+wasmdee bench http://127.0.0.1:8081/function/hello \
+  --label openfaas \
+  --iterations 1000 \
+  --concurrency 16
+```
+
+---
+
+## Interpreting Results
+
+```
+cold      count=10 errors=0 avg=8.234ms p50=7.891ms p95=10.123ms
+rehydrate count=10 errors=0 avg=1.456ms p50=1.234ms p95=2.345ms
+warm      count=1000 errors=0 avg=0.089ms p50=0.076ms p95=0.156ms
+```
+
+| Phase | What It Tells You |
+|---|---|
+| Cold avg | How long until the first response on a fresh machine |
+| Rehydrate avg | Recovery cost after scale-to-zero (no recompile needed) |
+| Warm avg | Steady-state per-invocation overhead |
+| Warm p95/p99 | Tail latency under load |
+| Throughput | Max invocations/second at the given concurrency |
+
+---
+
+## Comparison Methodology
+
+For fair comparisons against container-based platforms:
+
+<Steps>
+  <Step title="Same function">
+    Use an identical function (same logic, same payload size) on both platforms.
+  </Step>
+  <Step title="Same machine">
+    Run both on the same hardware to eliminate CPU/memory differences.
+  </Step>
+  <Step title="Same concurrency">
+    Use identical `--concurrency` and `--iterations` settings.
+  </Step>
+  <Step title="Warm both">
+    Ensure the container platform has warm containers before measuring. wasmdee's `--warmup` flag handles this automatically.
+  </Step>
+  <Step title="Report environment">
+    Always include: CPU model, core count, memory, OS, Go version, and function module size.
+  </Step>
+</Steps>
+
+---
+
+## JSON Output for CI
+
+```bash
+wasmdee bench ./hello.wasm --json > results/wasmdee-local.json
+wasmdee bench http://127.0.0.1:8080/invoke/hello --json --label wasmdee-http > results/wasmdee-http.json
+wasmdee bench http://127.0.0.1:8081/function/hello --json --label openfaas > results/openfaas.json
+```
+
+The JSON output includes all histogram data, engine stats, and dispatcher stats for automated analysis.
+
+---
+
+## Rules Before Publishing Claims
+
+<Warning>
+Do not publish benchmark results that compare platforms without following these rules.
+</Warning>
+
+1. Raw JSON artifacts must be committed alongside any claim
+2. Environment metadata (hardware, OS, versions) must be documented
+3. Both platforms must be measured with the same methodology
+4. Cold-start comparisons must specify whether the container platform was pre-pulled
+5. Throughput claims must state the concurrency level
+6. Results from a single run are anecdotal — use multiple iterations

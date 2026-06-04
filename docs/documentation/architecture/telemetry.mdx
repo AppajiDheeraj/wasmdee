@@ -1,0 +1,113 @@
+---
+title: "Telemetry"
+description: "Per-function metrics, EWMA latency, and runtime observability"
+icon: "chart-mixed"
+---
+
+## Overview
+
+wasmdee tracks per-function telemetry for every deployed function. This data feeds future runtime decisions (warm policy, autoscaling, proto-faaslet templates) and is exposed through `GET /runtime`.
+
+---
+
+## Per-Function Metrics
+
+Each function accumulates:
+
+| Metric | Type | Description |
+|---|---|---|
+| `accepted` | counter | Invocations admitted to the dispatcher |
+| `rejected` | counter | Invocations rejected (queue full) |
+| `started` | counter | Invocations that began execution |
+| `completed` | counter | Invocations that finished (success or failure) |
+| `failed` | counter | Invocations that returned a non-zero exit or error |
+| `in_flight` | gauge | Currently executing invocations |
+| `ewma_latency_ms` | gauge | Exponentially weighted moving average latency |
+| `ewma_arrival_rate` | gauge | Exponentially weighted moving average invocations/sec |
+| `last_invoked_at` | timestamp | When this function was last called |
+| `last_error` | string | Most recent error message (if any) |
+
+---
+
+## EWMA Calculations
+
+Exponentially Weighted Moving Averages smooth out short-term spikes to give a rolling view of function behavior:
+
+- **Latency EWMA** — useful for detecting functions that are becoming slow (memory pressure, cold rehydration)
+- **Arrival Rate EWMA** — useful for identifying hot functions that should stay in the warm pool
+
+---
+
+## Accessing Telemetry
+
+### GET /runtime
+
+Returns the full runtime state:
+
+```json
+{
+  "engine": {
+    "compiled_modules": 3,
+    "compile_requests": 5,
+    "compile_hits": 2,
+    "evictions": 0,
+    "invocations": 150,
+    "host_calls": 0,
+    "host_call_failures": 0
+  },
+  "dispatcher": {
+    "workers": 8,
+    "min_workers": 2,
+    "max_workers": 32,
+    "accepted": 150,
+    "rejected": 0,
+    "scale_ups": 6,
+    "scale_downs": 0
+  },
+  "function_stats": {
+    "hello": {
+      "accepted": 100,
+      "rejected": 0,
+      "started": 100,
+      "completed": 100,
+      "failed": 0,
+      "in_flight": 0,
+      "ewma_latency_ms": 0.089,
+      "ewma_arrival_rate": 45.2,
+      "last_invoked_at": "2025-06-02T10:30:00Z"
+    },
+    "fibonacci": {
+      "accepted": 50,
+      "rejected": 0,
+      "started": 50,
+      "completed": 48,
+      "failed": 2,
+      "in_flight": 2,
+      "ewma_latency_ms": 12.34,
+      "ewma_arrival_rate": 5.1,
+      "last_invoked_at": "2025-06-02T10:29:55Z",
+      "last_error": "function exited with code 1"
+    }
+  },
+  "preload": {
+    "requested": 3,
+    "compiled": 3,
+    "failed": []
+  }
+}
+```
+
+### GET /healthz
+
+Returns a lightweight subset (engine + dispatcher stats only) suitable for load balancer health checks.
+
+---
+
+## Why This Matters
+
+Telemetry is the prerequisite for intelligent runtime behavior:
+
+1. **Warm pool policy** — keep frequently-called functions compiled; evict cold ones
+2. **Autoscaling signals** — arrival rate drives worker scaling decisions
+3. **Proto-faaslet templates** — latency + arrival rate determine which functions deserve a reusable instance template
+4. **Debugging** — `last_error` and `failed` counts surface problems without log diving

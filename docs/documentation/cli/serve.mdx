@@ -1,0 +1,77 @@
+---
+title: "wasmdee serve"
+description: "Start the HTTP gateway with a long-lived runtime and autoscaling dispatcher"
+icon: "server"
+---
+
+## Usage
+
+```bash
+wasmdee serve [flags]
+```
+
+## Description
+
+Starts the wasmdee HTTP gateway. This is the production-facing entry point that:
+
+- Creates a long-lived Wazero engine (one per process)
+- Preloads all deployed functions into the compiled-module warm pool
+- Starts an autoscaling bounded dispatcher for concurrent invocations
+- Exposes REST endpoints for function invocation and observability
+
+## Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--addr` | `127.0.0.1:8080` | HTTP gateway listen address |
+| `--workers` | `NumCPU * 4` | Fixed worker count (used when min/max not set) |
+| `--min-workers` | `0` | Minimum workers kept warm |
+| `--max-workers` | `0` | Maximum workers for autoscaling |
+| `--queue-size` | `1024` | Max pending invocations before 429 |
+| `--invoke-timeout` | `10s` | Max execution time per HTTP invocation |
+| `--preload` | `true` | Compile deployed functions at startup |
+| `--scale-down-after` | `30s` | Idle time before extra workers retire |
+| `--scale-to-zero-after` | `0` (disabled) | Idle time before compiled modules are evicted |
+
+## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/invoke/{name}` | Invoke a function |
+| `GET` | `/functions` | List deployed functions |
+| `GET` | `/runtime` | Engine, dispatcher, and telemetry stats |
+| `GET` | `/healthz` | Health check with engine/dispatcher status |
+
+## Examples
+
+```bash
+# Start with defaults (preload enabled, auto workers)
+wasmdee serve
+
+# Production-tuned with autoscaling
+wasmdee serve \
+  --addr 0.0.0.0:8080 \
+  --min-workers 4 \
+  --max-workers 64 \
+  --queue-size 2048 \
+  --invoke-timeout 30s
+
+# Local development with aggressive scale-to-zero
+wasmdee serve \
+  --min-workers 1 \
+  --max-workers 4 \
+  --scale-to-zero-after 60s
+```
+
+## Autoscaling Behavior
+
+When `--min-workers` and `--max-workers` are both set:
+
+1. The dispatcher starts with `min-workers` active
+2. As queue pressure increases, new workers are spawned up to `max-workers`
+3. Workers idle longer than `--scale-down-after` are retired back toward `min-workers`
+4. If `--scale-to-zero-after` is set, compiled modules that haven't been invoked within that window are evicted from the warm pool (the file-backed compilation cache is preserved for fast rehydration)
+
+## Backpressure
+
+When all workers are busy and the queue reaches `--queue-size`, new invocations receive HTTP `429 Too Many Requests`. This prevents unbounded memory growth and keeps latency predictable for admitted work.
