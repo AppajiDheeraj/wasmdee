@@ -3,11 +3,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { functions } from '@/data/dashboard';
 
-export function FunctionCatalog({ query = '', onOpenFunction }) {
-  const filteredFunctions = functions.filter((row) => {
+export function FunctionCatalog({ functions: rows = functions, query = '', onOpenFunction }) {
+  const filteredFunctions = rows.filter((row) => {
     const haystack = `${row.name} ${row.runtime} ${row.namespace} ${row.repository}`.toLowerCase();
     return haystack.includes(query.toLowerCase());
   });
+  const activeCount = rows.filter((row) => row.status !== 'idle').length;
+  const idleCount = rows.length - activeCount;
 
   return (
     <Card className="overflow-hidden rounded-md shadow-none">
@@ -15,10 +17,10 @@ export function FunctionCatalog({ query = '', onOpenFunction }) {
         <CardTitle className="text-base">Function Catalog</CardTitle>
         <div className="flex items-center gap-1.5">
           <span className="rounded-sm border border-border bg-secondary px-2 py-0.5 text-[11px] font-medium">
-            Active (18)
+            Active ({activeCount})
           </span>
           <span className="rounded-sm border border-border bg-card px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-            Idle (6)
+            Idle ({idleCount})
           </span>
         </div>
       </CardHeader>
@@ -40,11 +42,20 @@ export function FunctionCatalog({ query = '', onOpenFunction }) {
               {filteredFunctions.map((row) => (
                 <FunctionRow key={row.name} row={row} onOpenFunction={onOpenFunction} />
               ))}
+              {filteredFunctions.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                    No functions match the current filter.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
         <div className="flex flex-col gap-2 border-t border-border bg-secondary px-3 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
-          <span className="text-muted-foreground">Showing 1-4 of 24 functions</span>
+          <span className="text-muted-foreground">
+            Showing {filteredFunctions.length} of {rows.length} functions
+          </span>
           <div className="flex items-center gap-1.5">
             <Button type="button" variant="outline" size="sm" className="h-7 rounded-sm bg-card px-2.5 text-xs" disabled>
               Previous

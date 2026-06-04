@@ -73,6 +73,12 @@ function App() {
         }
       : null;
   const dashboardUser = user || previewUser;
+  const localUser = {
+    email: 'local@wasmdee.dev',
+    user_metadata: {
+      full_name: 'Local Runtime',
+    },
+  };
 
   const updateForm = (event) => {
     const { name, value } = event.target;
@@ -218,10 +224,10 @@ function App() {
     );
   }
 
-  if (dashboardUser) {
+  if (dashboardUser || !isSupabaseConfigured) {
     return (
       <DashboardPage
-        user={dashboardUser}
+        user={dashboardUser || localUser}
         isSubmitting={isSubmitting}
         onSignOut={handleSignOut}
         theme={theme}
