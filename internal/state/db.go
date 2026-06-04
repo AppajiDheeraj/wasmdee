@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/dheeraj/wasmdee/internal/utils"
 	_ "modernc.org/sqlite" // SQLite driver
@@ -37,10 +38,7 @@ func initDB() error {
 	}
 
 	if !configured || dbPath == "" {
-		if !configured || dbPath == "" {
-			return fmt.Errorf("state database not configured: call state.Configure() first")
-		}
-
+		return fmt.Errorf("state database not configured: call state.Configure() first")
 	}
 
 	var err error
@@ -63,6 +61,89 @@ func initDB() error {
 	}
 
 	return nil
+}
+
+// Function is the local registry record for a deployed Wasm function.
+type Function struct {
+	Name         string `json:"name"`
+	WasmPath     string `json:"wasm_path"`
+	Capabilities string `json:"capabilities"`
+	CreatedAt    int64  `json:"created_at"`
+}
+
+// SaveFunction inserts or replaces a function registry entry.
+func SaveFunction(fn Function) error {
+	if fn.CreatedAt == 0 {
+		fn.CreatedAt = time.Now().Unix()
+	}
+
+	return withTx(func(tx *sql.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO functions (name, wasm_path, capabilities, created_at)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT(name) DO UPDATE SET
+				wasm_path = excluded.wasm_path,
+				capabilities = excluded.capabilities,
+				created_at = excluded.created_at
+		`, fn.Name, fn.WasmPath, fn.Capabilities, fn.CreatedAt)
+		if err != nil {
+			return fmt.Errorf("failed to save function %q: %w", fn.Name, err)
+		}
+		return nil
+	})
+}
+
+// GetFunction returns a function by name.
+func GetFunction(name string) (Function, error) {
+	d, err := GetDB()
+	if err != nil {
+		return Function{}, err
+	}
+
+	var fn Function
+	err = d.QueryRow(`
+		SELECT name, wasm_path, capabilities, created_at
+		FROM functions
+		WHERE name = ?
+	`, name).Scan(&fn.Name, &fn.WasmPath, &fn.Capabilities, &fn.CreatedAt)
+	if err == sql.ErrNoRows {
+		return Function{}, fmt.Errorf("function %q is not deployed", name)
+	}
+	if err != nil {
+		return Function{}, fmt.Errorf("failed to read function %q: %w", name, err)
+	}
+	return fn, nil
+}
+
+// ListFunctions returns all deployed functions ordered by name.
+func ListFunctions() ([]Function, error) {
+	d, err := GetDB()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := d.Query(`
+		SELECT name, wasm_path, capabilities, created_at
+		FROM functions
+		ORDER BY name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list functions: %w", err)
+	}
+	defer rows.Close()
+
+	var functions []Function
+	for rows.Next() {
+		var fn Function
+		if err := rows.Scan(&fn.Name, &fn.WasmPath, &fn.Capabilities, &fn.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan function: %w", err)
+		}
+		functions = append(functions, fn)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate functions: %w", err)
+	}
+	return functions, nil
 }
 
 // CloseDB closes the database to release file handles on shutdown.

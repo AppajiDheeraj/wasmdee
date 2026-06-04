@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/spf13/cobra v1.8.1
+	github.com/tetratelabs/wazero v1.9.0
 	modernc.org/sqlite v1.50.1
 )
 

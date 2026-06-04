@@ -8,6 +8,10 @@ import (
 
 // GetGoWasmdeeDir returns the per-user config root based on OS conventions.
 func GetWasmdeeDir() string {
+	if home := os.Getenv("WASMDEE_HOME"); home != "" {
+		return EnsureAbsPath(home)
+	}
+
 	switch runtime.GOOS {
 	case "windows":
 		appData := os.Getenv("APPDATA")
@@ -64,6 +68,16 @@ func GetStateDir() string {
 	return filepath.Join(GetWasmdeeDir(), "state")
 }
 
+// GetModulesDir returns the content-addressed store for deployed Wasm modules.
+func GetModulesDir() string {
+	return filepath.Join(GetStateDir(), "modules")
+}
+
+// GetCacheDir returns the Wazero compilation cache directory.
+func GetCacheDir() string {
+	return filepath.Join(GetStateDir(), "cache")
+}
+
 // GetLogsDir returns the directory for logs.
 func GetLogsDir() string {
 	return filepath.Join(GetWasmdeeDir(), "logs")
@@ -71,7 +85,7 @@ func GetLogsDir() string {
 
 // EnsureDirs creates all required directories.
 func EnsureDirs() error {
-	dirs := []string{GetWasmdeeDir(), GetStateDir(), GetLogsDir(), GetRuntimeDir()}
+	dirs := []string{GetWasmdeeDir(), GetStateDir(), GetModulesDir(), GetCacheDir(), GetLogsDir(), GetRuntimeDir()}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err

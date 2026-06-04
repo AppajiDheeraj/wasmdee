@@ -23,8 +23,8 @@ var rootCmd = &cobra.Command{
 	Short:   "A Wasm-native serverless runtime",
 	Long:    `wasmdee is a Wasm-native serverless runtime running functions at microsecond scale.`,
 	Version: Version,
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		initializeGlobalState()
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		return initializeGlobalState()
 	},
 }
 
@@ -35,6 +35,7 @@ func init() {
 	rootCmd.AddCommand(invokeCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(benchCmd)
 }
 
 // Execute runs the root command and exits on error.
@@ -46,20 +47,18 @@ func Execute() {
 }
 
 // initializeGlobalState prepares directories, DB, and logging for CLI usage.
-func initializeGlobalState() {
-	stateDir := config.GetStateDir()
-	logsDir := config.GetLogsDir()
-
-	// Ensure directories exist
-	_ = os.MkdirAll(stateDir, 0o755)
-	_ = os.MkdirAll(logsDir, 0o755)
+func initializeGlobalState() error {
+	if err := config.EnsureDirs(); err != nil {
+		return err
+	}
 
 	// Config engine state
-	state.Configure(filepath.Join(stateDir, "wasmdee.db"))
+	state.Configure(filepath.Join(config.GetStateDir(), "wasmdee.db"))
 
 	// Config logging
-	utils.ConfigureDebug(logsDir)
+	utils.ConfigureDebug(config.GetLogsDir())
 
 	// Clean up old logs (retain last 5 log files)
 	utils.CleanupLogs(5)
+	return nil
 }

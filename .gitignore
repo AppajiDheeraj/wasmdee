@@ -1,0 +1,12 @@
+.DS_Store
+bin/
+
+# Go
+coverage.out
+
+# Frontend
+gui/frontend/dist/
+gui/frontend/node_modules/
+
+# Wails
+gui/build/bin/
