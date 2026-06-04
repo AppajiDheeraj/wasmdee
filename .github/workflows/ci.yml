@@ -5,13 +5,37 @@ on:
   pull_request:
 
 jobs:
-  test:
+  runtime:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.0'
+          go-version: '1.25.x'
           check-latest: false
+      - name: Check formatting
+        run: test -z "$(gofmt -l cmd internal)"
       - run: go test ./...
-      - run: go build ./cmd/wasmdee
+      - run: go build -o /tmp/wasmdee ./cmd/wasmdee
+
+  gui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          check-latest: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: gui/frontend/package-lock.json
+      - name: Build frontend
+        working-directory: gui/frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Test GUI Go package
+        working-directory: gui
+        run: go test ./...
