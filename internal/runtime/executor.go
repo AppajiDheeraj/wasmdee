@@ -58,6 +58,9 @@ type EngineStats struct {
 	Evictions          uint64  `json:"evictions"`
 	HostCalls          uint64  `json:"host_calls"`
 	HostCallFailures   uint64  `json:"host_call_failures"`
+	ProtoFaaslets      int     `json:"proto_faaslets"`
+	InstancePools      int     `json:"instance_pools"`
+	WarmInstances      int     `json:"warm_instances"`
 	ScaleToZeroAfterMS float64 `json:"scale_to_zero_after_ms,omitempty"`
 }
 
@@ -98,6 +101,8 @@ type Engine struct {
 	mu       sync.RWMutex
 	compiled map[string]*compiledEntry
 	closed   bool
+	proto    *protoStore
+	pools    *instancePoolStore
 
 	scaleToZeroAfter time.Duration
 	hostCallTimeout  time.Duration
@@ -133,6 +138,8 @@ func NewEngine(ctx context.Context, cfg EngineConfig) (*Engine, error) {
 		cache:            cache,
 		rt:               rt,
 		compiled:         make(map[string]*compiledEntry),
+		proto:            newProtoStore(),
+		pools:            newInstancePoolStore(),
 		scaleToZeroAfter: cfg.ScaleToZeroAfter,
 		hostCallTimeout:  cfg.HostCallTimeout,
 		reaperStop:       make(chan struct{}),
@@ -167,6 +174,7 @@ func (e *Engine) Close(ctx context.Context) error {
 	close(e.reaperStop)
 	<-e.reaperDone
 
+	e.pools.close(ctx)
 	if err := e.rt.Close(ctx); err != nil {
 		_ = e.cache.Close(ctx)
 		return err
@@ -179,6 +187,8 @@ func (e *Engine) Stats() EngineStats {
 	e.mu.RLock()
 	compiled := uint64(len(e.compiled))
 	e.mu.RUnlock()
+	poolStats := e.pools.stats()
+	protoStats := e.proto.stats(poolStats)
 
 	stats := EngineStats{
 		CompiledModules:  compiled,
@@ -188,6 +198,9 @@ func (e *Engine) Stats() EngineStats {
 		Evictions:        e.evictions.Load(),
 		HostCalls:        e.hostCalls.Load(),
 		HostCallFailures: e.hostCallFailures.Load(),
+		ProtoFaaslets:    protoStats.Templates,
+		InstancePools:    protoStats.InstancePools,
+		WarmInstances:    protoStats.WarmInstances,
 	}
 	if e.scaleToZeroAfter > 0 {
 		stats.ScaleToZeroAfterMS = float64(e.scaleToZeroAfter.Microseconds()) / 1000.0
@@ -199,13 +212,27 @@ func (e *Engine) Stats() EngineStats {
 func (e *Engine) Preload(ctx context.Context, functions []state.Function) PreloadResult {
 	result := PreloadResult{Requested: len(functions)}
 	for _, fn := range functions {
-		if _, err := e.Compile(ctx, fn); err != nil {
+		compiled, err := e.Compile(ctx, fn)
+		if err != nil {
 			result.Failed = append(result.Failed, PreloadError{Name: fn.Name, Err: err.Error()})
 			continue
+		}
+		if isHandlerABI(compiled) {
+			poolSize, err := e.pools.ensure(ctx, e.rt, compiled, fn, 1)
+			if err != nil {
+				result.Failed = append(result.Failed, PreloadError{Name: fn.Name, Err: err.Error()})
+				continue
+			}
+			e.proto.recordCompiled(fn, abiHandler, poolSize)
 		}
 		result.Compiled++
 	}
 	return result
+}
+
+// ProtoFaaslets returns the current compiled-template and instance-pool view.
+func (e *Engine) ProtoFaaslets() []ProtoFaaslet {
+	return e.proto.snapshot()
 }
 
 // Compile validates and caches a deployed function's Wasm module.
@@ -226,6 +253,7 @@ func (e *Engine) Compile(ctx context.Context, fn state.Function) (wazero.Compile
 	if entry != nil {
 		e.compileHits.Add(1)
 		e.touch(key)
+		e.proto.touch(key, e.pools.size(key))
 		return entry.module, nil
 	}
 
@@ -237,6 +265,7 @@ func (e *Engine) Compile(ctx context.Context, fn state.Function) (wazero.Compile
 	if entry = e.compiled[key]; entry != nil {
 		e.compileHits.Add(1)
 		entry.lastUsed = time.Now()
+		e.proto.touch(key, e.pools.size(key))
 		return entry.module, nil
 	}
 
@@ -249,6 +278,7 @@ func (e *Engine) Compile(ctx context.Context, fn state.Function) (wazero.Compile
 		return nil, fmt.Errorf("compile wasm module: %w", err)
 	}
 	e.compiled[key] = &compiledEntry{module: compiled, name: fn.Name, lastUsed: time.Now()}
+	e.proto.recordCompiled(fn, detectABI(compiled), e.pools.size(fn.WasmPath))
 	return compiled, nil
 }
 
@@ -273,6 +303,8 @@ func (e *Engine) EvictFunction(ctx context.Context, fn state.Function) EvictionR
 	delete(e.compiled, fn.WasmPath)
 	e.mu.Unlock()
 
+	e.pools.remove(ctx, fn.WasmPath)
+	e.proto.remove(fn.WasmPath)
 	if err := entry.module.Close(ctx); err != nil {
 		result.Errors = append(result.Errors, err.Error())
 	}
@@ -290,6 +322,7 @@ func (e *Engine) EvictIdle(ctx context.Context, idleFor time.Duration) EvictionR
 
 	cutoff := time.Now().Add(-idleFor)
 	var evict []*compiledEntry
+	var evictKeys []string
 	e.mu.Lock()
 	for key, entry := range e.compiled {
 		result.Requested++
@@ -299,10 +332,13 @@ func (e *Engine) EvictIdle(ctx context.Context, idleFor time.Duration) EvictionR
 		}
 		delete(e.compiled, key)
 		evict = append(evict, entry)
+		evictKeys = append(evictKeys, key)
 	}
 	e.mu.Unlock()
 
-	for _, entry := range evict {
+	for i, entry := range evict {
+		e.pools.remove(ctx, evictKeys[i])
+		e.proto.remove(evictKeys[i])
 		if err := entry.module.Close(ctx); err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", entry.name, err))
 		}
@@ -370,6 +406,7 @@ func (e *Engine) Invoke(ctx context.Context, inv Invocation) (Result, error) {
 	}
 	e.invocations.Add(1)
 	e.touch(inv.Function.WasmPath)
+	e.proto.touch(inv.Function.WasmPath, e.pools.size(inv.Function.WasmPath))
 
 	if err == nil {
 		return result, nil

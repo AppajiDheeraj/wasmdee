@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, Boxes, Cpu, Gauge, Play, Plus, RefreshCw, Zap } from 'lucide-react';
+import { Activity, Boxes, Cpu, Gauge, Play, Plus, RefreshCw } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { TopBar } from '@/components/dashboard/top-bar';
 import { Sidebar } from '@/components/dashboard/sidebar';
@@ -142,8 +142,8 @@ export function DashboardPage({ user, isSubmitting, onSignOut, theme, onToggleTh
           onSignOut={onSignOut}
           onViewChange={setActiveView}
         />
-        <main className="min-w-0 flex-1 px-4 py-5 pb-20 md:ml-56 md:max-w-[calc(100vw-14rem)] md:pb-8">
-          <div className="mx-auto flex max-w-6xl flex-col gap-5">
+        <main className="min-w-0 flex-1 px-4 py-6 pb-20 md:ml-56 md:max-w-[calc(100vw-14rem)] md:pb-8">
+          <div className="mx-auto flex max-w-6xl flex-col gap-6">
             {runtimeError && <RuntimeError message={runtimeError} />}
             <DashboardContent
               activeView={activeView}
@@ -185,14 +185,13 @@ function DashboardContent({
   onInvoke,
   onOpenFunction,
   onRefresh,
-  onSelectView,
 }) {
   if (activeView === 'functions') {
     return (
       <>
         <PageHeader
           title="Functions"
-          description="Modules deployed into the local wasmdee registry."
+          description="Deployed modules, routes, and public URL metadata from the local registry."
           primaryAction={{ label: 'Deploy', icon: Plus, onClick: onDeploy }}
           secondaryAction={{ label: 'Refresh', icon: RefreshCw, onClick: onRefresh, loading: isRefreshing }}
         />
@@ -218,7 +217,7 @@ function DashboardContent({
       <>
         <PageHeader
           title="Runtime"
-          description="Live engine, dispatcher, preload, and per-function telemetry from this machine."
+          description="Live engine, dispatcher, preload, and per-function telemetry measured on this machine."
           secondaryAction={{ label: 'Refresh', icon: RefreshCw, onClick: onRefresh, loading: isRefreshing }}
         />
         <RuntimeSummary snapshot={runtimeSnapshot} />
@@ -230,7 +229,7 @@ function DashboardContent({
     <>
       <PageHeader
         title="Overview"
-        description="A focused local console for deploying and invoking WebAssembly functions."
+        description="Deploy, invoke, inspect routes, and monitor the local WebAssembly runtime."
         primaryAction={{ label: 'Deploy', icon: Plus, onClick: onDeploy }}
         secondaryAction={{ label: 'Refresh', icon: RefreshCw, onClick: onRefresh, loading: isRefreshing }}
       />
@@ -239,9 +238,9 @@ function DashboardContent({
           <MetricCard key={metric.title} metric={metric} />
         ))}
       </section>
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)]">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.28fr)_minmax(300px,0.72fr)]">
         <FunctionCatalog functions={functionRows} query={searchValue} onOpenFunction={onOpenFunction} />
-        <QuickInvoke selectedFunction={selectedFunction} onInvoke={onInvoke} onSelectView={onSelectView} />
+        <QuickInvoke selectedFunction={selectedFunction} onInvoke={onInvoke} />
       </section>
       <RuntimeSummary snapshot={runtimeSnapshot} />
     </>
@@ -252,7 +251,7 @@ function PageHeader({ title, description, primaryAction, secondaryAction }) {
   return (
     <section className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="text-[28px] font-semibold leading-tight">{title}</h1>
         <p className="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">{description}</p>
       </div>
 
@@ -267,16 +266,16 @@ function PageHeader({ title, description, primaryAction, secondaryAction }) {
 function HeaderButton({ action, variant }) {
   const Icon = action.icon;
   return (
-    <Button type="button" variant={variant} className="h-8 rounded-md px-3 text-sm" onClick={action.onClick}>
+    <Button type="button" variant={variant} className="h-8 rounded-lg px-3 text-sm shadow-sm" onClick={action.onClick}>
       <Icon className={action.loading ? 'animate-spin' : ''} />
       {action.label}
     </Button>
   );
 }
 
-function QuickInvoke({ selectedFunction, onInvoke, onSelectView }) {
+function QuickInvoke({ selectedFunction, onInvoke }) {
   return (
-    <section className="rounded-md border border-border bg-card p-4">
+    <section className="wm-panel rounded-xl p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">Quick invoke</h2>
@@ -284,15 +283,12 @@ function QuickInvoke({ selectedFunction, onInvoke, onSelectView }) {
             {selectedFunction ? `Send an empty request to ${selectedFunction.name}.` : 'Deploy a function to enable invocation.'}
           </p>
         </div>
-        <span className="rounded-md bg-secondary px-2 py-1 font-mono text-[11px] text-muted-foreground">stdin</span>
+        <span className="rounded-full bg-secondary px-2.5 py-1 font-mono text-[11px] text-muted-foreground">stdin</span>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button type="button" className="h-8 rounded-md px-3 text-sm" disabled={!selectedFunction} onClick={() => onInvoke({ body: '' })}>
+        <Button type="button" className="h-8 rounded-lg px-3 text-sm shadow-sm" disabled={!selectedFunction} onClick={() => onInvoke({ body: '' })}>
           <Play />
           Invoke
-        </Button>
-        <Button type="button" variant="outline" className="h-8 rounded-md px-3 text-sm" onClick={() => onSelectView('invoke')}>
-          Open editor
         </Button>
       </div>
     </section>
@@ -323,6 +319,8 @@ function toFunctionRows(snapshot) {
       name: fn.name,
       runtime: 'WASI command',
       path: fn.wasm_path,
+      route: fn.route || `/${fn.name}`,
+      publicURL: fn.public_url || '',
       deployed: formatDate(fn.created_at),
       invocations: formatNumber(completed),
       inFlight,

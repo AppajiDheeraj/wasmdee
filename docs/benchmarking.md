@@ -17,6 +17,7 @@ wasmdee bench ./hello.wasm \
   --iterations 1000 \
   --warmup 100 \
   --concurrency 8 \
+  --report reports/hello-local.html \
   --json
 ```
 
@@ -28,10 +29,16 @@ Local mode reports:
   pool, then loaded again through Wazero's file-backed compilation cache.
 - `warm`: the steady-state path through the long-lived engine, compiled-module
   warm pool, bounded dispatcher, and autoscaled workers.
+- `memory`: Go heap allocation before and after the warm run, included in JSON
+  and HTML reports.
 
 This is not a proto-faaslet snapshot benchmark yet. It does not prove CoW
 snapshot restore, lazy page restore, OS fork restore, or reusable instance-pool
 latency.
+
+Use `--report path/to/result.html` for a shareable visual report or
+`--report path/to/result.json` for raw data that can be checked into a benchmark
+dataset.
 
 ## HTTP baseline benchmark
 
@@ -42,6 +49,7 @@ wasmdee bench http://127.0.0.1:8080/invoke/hello \
   --warmup 100 \
   --concurrency 8 \
   --data '{"name":"world"}' \
+  --report reports/wasmdee-http.html \
   --json
 ```
 
@@ -49,13 +57,24 @@ Run the same command against an OpenFaaS function, a Docker container endpoint,
 or another baseline:
 
 ```bash
-wasmdee bench http://127.0.0.1:8081/function/hello --label openfaas --json
-wasmdee bench http://127.0.0.1:8082/hello --label docker --json
+wasmdee bench http://127.0.0.1:8081/function/hello --label openfaas --report reports/openfaas.html --json
+wasmdee bench http://127.0.0.1:8082/hello --label docker --report reports/docker.html --json
 ```
 
 HTTP mode reports the same p50, p95, p99, min, max, error count, and throughput
 fields. It intentionally does not know whether the target is OpenFaaS, Docker,
 or another system; the label is supplied by the experiment runner.
+
+For 100+ concurrent functions, run the same manifest shape across each platform:
+
+```bash
+wasmdee deploy --config wasmdee.yaml
+wasmdee serve --min-workers 8 --max-workers 256 --queue-size 4096 --preload
+wasmdee bench http://127.0.0.1:8080/hello --label wasmdee-100fn --concurrency 128 --iterations 10000 --report reports/wasmdee-100fn.html --json
+```
+
+Then repeat against the Docker/OpenFaaS endpoints with identical payload,
+concurrency, iteration count, host, and function code.
 
 ## Publishing Rules
 
@@ -66,6 +85,7 @@ Before claiming `N x faster`, publish:
 - Function source code and compiled Wasm artifact.
 - Exact `wasmdee bench` commands.
 - Raw JSON output for wasmdee and each baseline.
+- HTML reports when presenting the result publicly.
 - Whether the measured path is local, HTTP, cold, rehydrate, or warm.
 - Whether the baseline was already warm or had to cold-start a container.
 

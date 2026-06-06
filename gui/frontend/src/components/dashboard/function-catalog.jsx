@@ -4,13 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export function FunctionCatalog({ functions: rows = [], query = '', onOpenFunction }) {
   const filteredFunctions = rows.filter((row) => {
-    const haystack = `${row.name} ${row.runtime} ${row.path}`.toLowerCase();
+    const haystack = `${row.name} ${row.runtime} ${row.path} ${row.route} ${row.publicURL}`.toLowerCase();
     return haystack.includes(query.toLowerCase());
   });
 
   return (
-    <Card className="overflow-hidden rounded-md shadow-none">
-      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border p-4">
+    <Card className="wm-panel overflow-hidden rounded-xl shadow-none">
+      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border/80 p-4">
         <div>
           <CardTitle className="text-base">Functions</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">{rows.length} deployed in the local registry</p>
@@ -19,15 +19,16 @@ export function FunctionCatalog({ functions: rows = [], query = '', onOpenFuncti
       <CardContent className="p-0">
         {filteredFunctions.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse text-left">
+            <table className="w-full min-w-[920px] border-collapse text-left">
               <thead>
-                <tr className="border-b border-border bg-secondary/80 text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
+                <tr className="border-b border-border/80 bg-secondary/45 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   <th className="px-4 py-2.5">Name</th>
                   <th className="px-4 py-2.5">Status</th>
                   <th className="px-4 py-2.5 text-right">Invocations</th>
                   <th className="px-4 py-2.5 text-right">In flight</th>
                   <th className="px-4 py-2.5 text-right">Latency</th>
-                  <th className="px-4 py-2.5">Wasm path</th>
+                  <th className="px-4 py-2.5">Route</th>
+                  <th className="px-4 py-2.5">URL</th>
                   <th className="px-4 py-2.5" />
                 </tr>
               </thead>
@@ -50,10 +51,10 @@ function FunctionRow({ row, onOpenFunction }) {
   const status = getStatus(row.status);
 
   return (
-    <tr className="border-b border-border last:border-b-0 transition hover:bg-secondary/60">
+    <tr className="wm-row border-b border-border/70 last:border-b-0">
       <td className="px-4 py-3">
         <div className="flex items-center gap-2.5">
-          <span className="flex size-8 items-center justify-center rounded-md bg-secondary text-foreground">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-secondary/80 text-foreground">
             <Box className="h-3.5 w-3.5" />
           </span>
           <div className="min-w-0">
@@ -63,7 +64,7 @@ function FunctionRow({ row, onOpenFunction }) {
         </div>
       </td>
       <td className="px-4 py-3">
-        <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${status.className}`}>
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${status.className}`}>
           <status.icon className="h-3.5 w-3.5" />
           {status.label}
         </span>
@@ -71,15 +72,16 @@ function FunctionRow({ row, onOpenFunction }) {
       <td className="px-4 py-3 text-right font-mono text-xs">{row.invocations}</td>
       <td className="px-4 py-3 text-right font-mono text-xs">{row.inFlight}</td>
       <td className="px-4 py-3 text-right font-mono text-xs">{row.latency}</td>
-      <td className="max-w-[260px] truncate px-4 py-3 font-mono text-xs text-muted-foreground" title={row.path}>
-        {row.path}
+      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{row.route}</td>
+      <td className="max-w-[260px] truncate px-4 py-3 font-mono text-xs text-muted-foreground" title={row.publicURL || row.path}>
+        {row.publicURL || 'local route only'}
       </td>
       <td className="px-4 py-3 text-right">
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="h-7 rounded-md px-2 text-xs"
+          className="h-7 rounded-full px-2.5 text-xs"
           onClick={() => onOpenFunction?.(row)}
         >
           Invoke
@@ -94,7 +96,7 @@ function EmptyState({ hasQuery }) {
   return (
     <div className="grid min-h-[220px] place-items-center p-6 text-center">
       <div>
-        <div className="mx-auto flex size-10 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+        <div className="mx-auto flex size-10 items-center justify-center rounded-xl bg-secondary text-muted-foreground">
           <Box className="h-4 w-4" />
         </div>
         <h3 className="mt-3 text-sm font-semibold">{hasQuery ? 'No matching functions' : 'No functions deployed'}</h3>

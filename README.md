@@ -1,149 +1,469 @@
+<div align="center">
+
 # wasmdee
 
-> Self-hostable serverless functions powered by WebAssembly. Deploy a `.wasm` file, get an HTTP trigger, and run it through one local Wasm runtime instead of one container per function.
+### A local-first, Wasm-native serverless runtime
 
-![status](https://img.shields.io/badge/status-building-amber) ![license](https://img.shields.io/badge/license-Apache%202.0-blue) ![language](https://img.shields.io/badge/Go-1.22+-00ADD8)
+Deploy WebAssembly functions, expose HTTP routes, and execute them through one
+shared runtime instead of one container process per function.
+
+[![CI](https://github.com/AppajiDheeraj/wasmdee/actions/workflows/ci.yml/badge.svg)](https://github.com/AppajiDheeraj/wasmdee/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![Wazero](https://img.shields.io/badge/runtime-Wazero-654FF0)](https://wazero.io/)
+[![WASI](https://img.shields.io/badge/ABI-WASI-5C4EE5)](https://wasi.dev/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-2F6FEB)](LICENSE)
+
+[Quick start](#quick-start) ·
+[Architecture](#architecture) ·
+[Deployment manifest](#deployment-manifest) ·
+[Runtime model](#runtime-model) ·
+[Project status](#project-status)
+
+</div>
 
 ---
 
-## what it is today
+## Overview
 
-A Wasm-native serverless runtime MVP. It runs WASI command modules through Wazero, keeps one long-lived runtime per process, preloads deployed modules, reuses compiled modules, admits traffic through an autoscaled bounded dispatcher, and can evict idle compiled modules back to zero warm in-process modules.
+wasmdee is an experimental serverless function platform built around a
+single-process WebAssembly data plane.
 
-The research target is proto-faaslet templates, hardened direct function-to-function calls, and snapshot/CoW restore. Those are tracked as architecture milestones and must be proven by benchmarks before they become launch claims.
+The runtime keeps Wazero, WASI imports, compiled modules, a bounded dispatcher,
+and telemetry alive at the node level. Each stable WASI command invocation still
+receives a fresh module instance and isolated linear memory.
 
----
+This provides a practical foundation for studying:
 
-## quick start
+- container-free function packaging;
+- compiled-module reuse;
+- bounded admission control;
+- local worker autoscaling;
+- compiled-module scale-to-zero and cache rehydration;
+- direct in-process function calls;
+- proto-faaslet templates and handler-oriented instance pools.
+
+> [!IMPORTANT]
+> wasmdee is an active runtime prototype. It is not production-ready, and it
+> does not yet implement true snapshot/CoW memory restoration, lazy page restore,
+> external DNS provisioning, or cluster-wide scheduling.
+
+## Why wasmdee
+
+Traditional FaaS systems commonly package functions as container images and
+place image distribution, process startup, orchestration, and network proxies
+on the execution path.
+
+wasmdee explores a different node architecture:
+
+| Container-oriented FaaS | wasmdee direction |
+|---|---|
+| Container image per function | Content-addressed `.wasm` module |
+| Runtime/process per replica | Shared Wazero runtime per node |
+| Unbounded pressure can overload workers | Bounded queue with explicit rejection |
+| Repeated decode and compilation | In-memory compiled modules plus file-backed cache |
+| HTTP between local functions | Experimental `wasmdee.invoke` host call |
+| Replica scale-to-zero | Compiled-module eviction and cache rehydration |
+| Snapshot behavior depends on container/runtime | Proto-faaslet and handler-pool research path |
+
+The goal is not to claim that Wasm automatically wins every workload. The goal
+is to build a runtime whose isolation, latency, memory behavior, and trade-offs
+can be measured and explained.
+
+## Features
+
+### Deployment and routing
+
+- Deploy a single `.wasm` module from the CLI.
+- Deploy multiple functions through a YAML application manifest.
+- Validate application names, function names, routes, domains, and durations.
+- Store modules by SHA-256 digest in a local content-addressed store.
+- Register function metadata and routes in SQLite.
+- Invoke by function name or deployment route.
+- Record generated or custom public URL metadata.
+
+### Runtime
+
+- Long-lived Wazero runtime with WASI support.
+- In-memory compiled-module warm pool.
+- File-backed Wazero compilation cache.
+- Fresh WASI module instance for each command invocation.
+- Preload deployed modules during gateway or GUI startup.
+- Idle compiled-module eviction.
+- Experimental `wasmdee.invoke` function-to-function host ABI.
+
+### Scheduling and telemetry
+
+- Bounded dispatcher queue.
+- Minimum and maximum worker configuration.
+- Queue-pressure-based local scale-up.
+- Idle retirement of burst workers.
+- HTTP `429` response when the runtime queue is full.
+- Engine, dispatcher, preload, and per-function telemetry.
+
+### Proto-faaslet foundation
+
+- Runtime-level proto-faaslet template registry.
+- ABI detection for WASI command and `wasmdee_handle` modules.
+- Pool eligibility and warm-instance tracking.
+- Initial pre-instantiated pool for handler-ABI modules.
+
+WASI command traffic still uses fresh instances. The handler pool is scaffolding
+for the next request/response ABI and SDK milestone; it is not snapshot restore.
+
+## Architecture
+
+![wasmdee architecture](docs/diagrams/wasmdee_deep_architecture.svg)
+
+The repository also contains editable diagram sources:
+
+- [Detailed architecture SVG](docs/diagrams/wasmdee_deep_architecture.svg)
+- [Simplified architecture SVG](docs/diagrams/wasmdee_arrow_architecture.svg)
+- [Event trace Excalidraw file](docs/diagrams/wasmdee_event_trace.excalidraw)
+- [Code-path system trace](docs/tracing.md)
+- [Architecture notes and trade-offs](docs/architecture.md)
+
+### Invocation path
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Gateway as HTTP gateway
+    participant Registry as SQLite registry
+    participant Dispatcher
+    participant Engine as Wazero engine
+    participant Module as Fresh WASI instance
+
+    Client->>Gateway: POST /route
+    Gateway->>Registry: Resolve route or function name
+    Registry-->>Gateway: Function metadata
+    Gateway->>Dispatcher: Submit invocation
+
+    alt Queue has capacity
+        Dispatcher->>Engine: Invoke function
+        Engine->>Engine: Compile or reuse compiled module
+        Engine->>Module: Instantiate with stdin and argv
+        Module-->>Engine: stdout, stderr, exit code
+        Engine-->>Dispatcher: Result and latency
+        Dispatcher-->>Gateway: Completed invocation
+        Gateway-->>Client: JSON response
+    else Queue is full
+        Dispatcher-->>Gateway: ErrQueueFull
+        Gateway-->>Client: HTTP 429
+    end
+```
+
+## Quick Start
+
+### Requirements
+
+- Go 1.25 or newer
+- Git
+- A WASI-compatible `.wasm` command module
+- Node.js 22 only when building the desktop frontend
+
+### Build the CLI
 
 ```bash
-go install github.com/dheeraj/wasmdee/cmd/wasmdee@latest
+git clone https://github.com/AppajiDheeraj/wasmdee.git
+cd wasmdee
+make build
+```
 
-wasmdee deploy hello.wasm --name hello
-wasmdee invoke hello --data '{"name":"world"}' --arg optional-value
-wasmdee serve --min-workers 2 --max-workers 16 --queue-size 1024 --preload
+The binary is written to `bin/wasmdee`.
+
+### Deploy and invoke a function
+
+```bash
+./bin/wasmdee deploy ./hello.wasm \
+  --name hello \
+  --route /hello
 ```
 
 ```bash
-curl -X POST http://127.0.0.1:8080/invoke/hello \
-  -d '{"name": "world"}'
+./bin/wasmdee invoke hello \
+  --data '{"name":"world"}'
 ```
 
----
+### Start the gateway
 
-## how it works today
+```bash
+./bin/wasmdee serve \
+  --addr 127.0.0.1:8080 \
+  --min-workers 2 \
+  --max-workers 16 \
+  --queue-size 1024 \
+  --preload
+```
 
-| path | status |
+Invoke through the assigned route:
+
+```bash
+curl --request POST \
+  --data '{"name":"world"}' \
+  http://127.0.0.1:8080/hello
+```
+
+Or invoke explicitly by function name:
+
+```bash
+curl --request POST \
+  --data '{"name":"world"}' \
+  http://127.0.0.1:8080/invoke/hello
+```
+
+## Deployment Manifest
+
+Applications can declare multiple functions in `wasmdee.yaml`:
+
+```yaml
+version: 1
+name: example-api
+domain: api.example.com
+
+functions:
+  - name: hello
+    source: ./hello.wasm
+    route: /hello
+    deploy: true
+    controls:
+      preload: true
+      zero_copy: true
+      max_concurrency: 64
+      scale_to_zero_after: 5m
+
+  - name: health
+    source: ./health.wasm
+    route: /health
+    deploy: true
+```
+
+Deploy the application:
+
+```bash
+./bin/wasmdee deploy --config ./wasmdee.yaml
+```
+
+Current manifest controls are validated and stored as deployment policy
+metadata. Not every control is enforced by the runtime yet.
+
+Custom domains generate public URL metadata. DNS records, certificates, ingress,
+and externally reachable routing are not provisioned by the current local
+control plane.
+
+## CLI
+
+| Command | Purpose |
 |---|---|
-| fresh CLI invoke | creates an engine, compiles/loads the module, runs one WASI command |
-| warm gateway invoke | reuses the process runtime and compiled-module warm pool, then creates a fresh isolated module instance |
-| rehydrate after scale-to-zero | reloads the compiled module through Wazero's file-backed compilation cache |
-| true CoW snapshot restore | planned research/runtime milestone |
-| reusable faaslet instance pool | planned for a non-WASI handler ABI |
+| `wasmdee deploy <file.wasm>` | Validate, store, and register one function |
+| `wasmdee deploy --config wasmdee.yaml` | Deploy a multi-function application |
+| `wasmdee list` | List registered functions |
+| `wasmdee invoke <name>` | Invoke through a short-lived local engine |
+| `wasmdee serve` | Start the long-lived HTTP gateway and dispatcher |
+| `wasmdee bench <target>` | Run engineering latency measurements |
 
-Each invocation still gets isolated Wasm linear memory. The current warm pool is a compiled-module pool, not a reusable memory instance pool.
+Useful gateway endpoints:
 
----
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/healthz` | Engine and dispatcher health |
+| `GET` | `/runtime` | Runtime, preload, function, and proto-faaslet telemetry |
+| `GET` | `/functions` | Registered function metadata |
+| `POST` | `/invoke/{name}` | Invoke by function name |
+| `POST` | `/{route}` | Invoke through a deployment route |
 
-## architecture
+## Runtime Model
 
-```
-HTTP gateway  ->  bounded autoscaled dispatcher  ->  long-lived Wazero engine
-                                                        |
-                                                        v
-                                                compiled-module warm pool
-                                                        |
-                                                        v
-                                                fresh WASI module instance
-                                                        |
-                                                        v
-                                                stdout/stderr/exit code
-```
+### Shared per node
 
-Built on ideas from FAASM, Catalyzer, Nightcore, SAND, and Cloudflare Workers.
+- Go process;
+- Wazero runtime;
+- WASI host module;
+- `wasmdee.invoke` host module;
+- compiled Wasm modules;
+- file-backed compilation cache;
+- dispatcher workers;
+- SQLite registry and module store.
 
----
+### Isolated per WASI invocation
 
-## status
+- module instance;
+- linear memory;
+- stdin, stdout, and stderr buffers;
+- argv;
+- timeout context;
+- exit code and invocation result.
 
-🚧 **actively building** — not production ready.
+### Cold, rehydrate, and warm behavior
 
-| phase | status |
+| Path | Behavior |
 |---|---|
-| core runtime skeleton (wasmdee deploy + invoke) | ✅ working MVP |
-| HTTP trigger | ✅ working MVP |
-| long-lived runtime + bounded dispatcher | ✅ working MVP |
-| preload + per-function telemetry | ✅ working MVP |
-| worker autoscaling + compiled-module scale-to-zero | ✅ working MVP |
-| benchmark command for local/HTTP comparison | ✅ working MVP |
-| experimental in-process host-call ABI | ✅ initial |
-| reusable faaslet instance pool | 🔲 planned |
-| snapshot + CoW cold-start | 🔲 planned |
-| state tiers + host APIs | 🔲 planned |
-| verified Docker/OpenFaaS benchmark report | 🔲 planned |
+| Cold | Create an engine and compile the module without an in-process entry |
+| Rehydrate | Reload after in-memory eviction while retaining the file-backed cache |
+| Warm | Reuse the engine and compiled module, then instantiate fresh execution state |
+| Handler pool | Pre-instantiate `wasmdee_handle` modules; request ABI integration is in progress |
+| Snapshot/CoW | Planned research milestone |
 
-## current runtime contract
+## Desktop Console
 
-The first working path runs WASI command modules. A function receives the request body on stdin and returns the response on stdout. `deploy` validates the `.wasm`, stores it in the local content-addressed module store, and registers metadata in SQLite. `serve` keeps a long-lived Wazero runtime, preloads deployed modules by default, reuses compiled modules, admits work through a bounded autoscaled dispatcher, and exposes runtime telemetry at `GET /runtime`. CLI `invoke` uses the same runtime path for a single call.
+The desktop application is built with Wails and React. It imports the same
+deployment, state, dispatcher, and runtime packages used by the CLI.
 
-Use `--min-workers`, `--max-workers`, and `--scale-down-after` to tune local worker autoscaling. Use `--scale-to-zero-after` to evict idle compiled modules from the in-process warm pool while keeping the file-backed compilation cache.
+The current console supports:
 
-Set `WASMDEE_HOME=/path/to/state` to override the default per-user state directory, which is useful for tests and demos.
+- native `.wasm` file selection;
+- local deployment;
+- function and route inspection;
+- stdin and argv invocation;
+- stdout, stderr, exit-code, and latency inspection;
+- engine and dispatcher telemetry;
+- preload, proto-template, and handler-pool visibility;
+- light and dark appearances.
 
-## development
+Authentication is optional. Without Supabase configuration, the application
+opens directly as a local runtime console.
+
+## Project Structure
+
+```text
+.
+├── cmd/wasmdee/             CLI entry point
+├── internal/
+│   ├── cli/                 Commands and HTTP gateway
+│   ├── config/              State, cache, module, and log paths
+│   ├── deploy/              Manifest parsing, validation, and deployment
+│   ├── runtime/             Engine, dispatcher, telemetry, proto store, pools
+│   └── state/               SQLite function registry
+├── gui/
+│   ├── app.go               Wails-to-runtime bridge
+│   └── frontend/            React desktop interface
+├── docs/
+│   ├── architecture.md      Runtime decisions and trade-offs
+│   ├── tracing.md           End-to-end code-path tracing
+│   ├── benchmarking.md      Reproducible measurement rules
+│   └── diagrams/            Editable SVG and Excalidraw architecture files
+├── examples/hello/          Example configuration
+├── Makefile
+└── .github/workflows/ci.yml
+```
+
+## Project Status
+
+| Capability | Status |
+|---|---|
+| CLI deploy, invoke, and list | Working MVP |
+| YAML multi-function deployment | Working MVP |
+| HTTP routes and gateway | Working MVP |
+| Long-lived engine and compiled-module reuse | Working MVP |
+| Bounded dispatcher and local worker autoscaling | Working MVP |
+| Preload and runtime telemetry | Working MVP |
+| Compiled-module scale-to-zero | Working MVP |
+| Direct in-process host call | Experimental |
+| Proto-faaslet template store | Initial implementation |
+| Handler-ABI instance pool | Initial scaffolding |
+| External domain provisioning | Planned |
+| Cluster scheduler and multi-node placement | Planned |
+| Snapshot/CoW and lazy page restoration | Research |
+| Hardened production sandbox and tenancy | Research |
+
+## Design Decisions
+
+### Why WASI command modules first?
+
+They offer a portable and understandable contract: request data enters through
+stdin, arguments through argv, and results leave through stdout and stderr.
+
+The trade-off is that command modules are single-shot. A reusable faaslet pool
+requires a stable handler ABI with explicit request, response, allocation, and
+memory-reset semantics.
+
+### Why fresh instances?
+
+Reusing compiled code avoids repeated decode and compilation work. Creating a
+fresh instance keeps mutable linear memory isolated and makes cleanup easier to
+reason about.
+
+### Why a bounded dispatcher?
+
+Backpressure is part of the runtime contract. Once the queue is full, wasmdee
+rejects new work instead of allowing unbounded memory growth.
+
+### Why keep benchmark tooling outside the GUI?
+
+Benchmarking is an engineering and evaluation workflow. End users get a focused
+deploy, invoke, route, and runtime console; reproducible benchmark scripts remain
+available through the CLI and documentation.
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [System tracing](docs/tracing.md)
+- [Benchmark methodology](docs/benchmarking.md)
+- [Documentation site source](docs/documentation/)
+- [Desktop console](gui/README.md)
+- [Hello example](examples/hello/README.md)
+
+## Development
+
+Run the root verification suite:
 
 ```bash
 make verify
 ```
 
-CI runs formatting, root Go tests, CLI build, GUI frontend build, and GUI Go package tests.
-
-## benchmarking
-
-Measure wasmdee directly:
+Build the frontend:
 
 ```bash
-wasmdee bench ./hello.wasm --iterations 1000 --warmup 100 --concurrency 8 --json
+cd gui/frontend
+npm ci
+npm run build
 ```
 
-Measure any HTTP baseline with the same histogram code:
+Test the Wails Go package:
 
 ```bash
-wasmdee bench http://127.0.0.1:8080/invoke/hello --label wasmdee-http
-wasmdee bench http://127.0.0.1:8081/function/hello --label openfaas
+cd gui
+go test ./...
 ```
 
-The command reports cold, rehydrate, and warm latency for local Wasm modules, plus warm HTTP latency for comparable endpoints. See `docs/benchmarking.md` before publishing performance claims.
+CI checks:
 
-## desktop console
+- Go formatting;
+- root Go tests;
+- CLI compilation;
+- frontend production build;
+- GUI Go tests.
 
-The Wails GUI is connected to the local runtime. When Supabase auth is not configured, it opens directly as a local desktop console. It can read deployed functions, display engine/dispatcher telemetry, invoke functions, and deploy `.wasm` modules through a native file picker.
+## Research Lineage
 
-Star the repo to follow along. Contributions welcome once Phase 1 ships.
+wasmdee is informed by ideas from:
 
----
+- [Faasm](https://github.com/faasm/faasm) and proto-faaslets;
+- [Catalyzer](https://www.usenix.org/conference/atc20/presentation/du);
+- [Nightcore](https://www.usenix.org/conference/asplos21/presentation/jia);
+- [SAND](https://www.usenix.org/conference/atc18/presentation/akkus);
+- [Wazero](https://wazero.io/);
+- [WASI](https://wasi.dev/).
 
-## capability model
+These systems motivate the architecture; they do not make their benchmark
+results automatically applicable to wasmdee.
 
-Each function ships with a `wasmdee.toml` declaring what it can access:
+## Contributing
 
-```toml
-[capabilities]
-network = true
-kv      = true
-fs      = ["./data"]
-```
+Contributions are welcome while the runtime is still taking shape.
 
-Everything not listed is denied at the host import layer.
+Before opening a change:
 
----
+1. Read [docs/architecture.md](docs/architecture.md).
+2. Keep durable metadata in `internal/state`.
+3. Keep execution and scheduling behavior in `internal/runtime`.
+4. Keep CLI and HTTP wiring in `internal/cli`.
+5. Keep the GUI as a client of the shared runtime packages.
+6. Add focused tests for runtime, state, or deployment behavior.
+7. Run `make verify`.
 
-## tech stack
+Please avoid presenting planned snapshot, CoW, lazy-restore, domain-provisioning,
+or multi-node behavior as implemented.
 
-Go · Wazero · Cobra · SQLite · Wails · React
+## License
 
----
-
-## license
-
-Apache 2.0 — see [LICENSE](LICENSE)
+Licensed under the [Apache License 2.0](LICENSE).

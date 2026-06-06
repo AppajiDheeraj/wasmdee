@@ -1,0 +1,314 @@
+<svg width="2400" height="1600" viewBox="0 0 2400 1600" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .title { font-family: "SF Mono", "Menlo", "Monaco", monospace; font-size: 62px; font-weight: 900; letter-spacing: 2px; fill: #111318; }
+      .subtitle { font-family: "SF Mono", "Menlo", "Monaco", monospace; font-size: 24px; font-weight: 650; fill: #55516b; }
+      .lane { font-family: "SF Mono", "Menlo", "Monaco", monospace; font-size: 23px; font-weight: 850; letter-spacing: 1.2px; fill: #312d4e; }
+      .h { font-family: "SF Mono", "Menlo", "Monaco", monospace; font-size: 27px; font-weight: 850; fill: #111318; }
+      .m { font-family: "SF Mono", "Menlo", "Monaco", monospace; font-size: 18px; font-weight: 700; fill: #222034; }
+      .s { font-family: "SF Mono", "Menlo", "Monaco", monospace; font-size: 14px; font-weight: 650; fill: #5d5974; }
+      .xs { font-family: "SF Mono", "Menlo", "Monaco", monospace; font-size: 12px; font-weight: 650; fill: #6b6780; }
+      .box { stroke: #5b5593; stroke-width: 3; rx: 18; }
+      .thin { stroke: #756fa6; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .hot { stroke: #1258f2; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+      .meta { stroke: #665ee0; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 12 14; }
+      .future { stroke: #8b5cf6; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 10 12; }
+      .line { stroke: #77718f; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+      .badge { font-family: "SF Mono", "Menlo", "Monaco", monospace; font-size: 13px; font-weight: 850; letter-spacing: .6px; }
+    </style>
+    <filter id="noise" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="2" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="table" tableValues="0 0.03"/>
+      </feComponentTransfer>
+    </filter>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#332b61" flood-opacity="0.15"/>
+    </filter>
+    <marker id="arrowBlue" markerWidth="16" markerHeight="16" refX="12" refY="8" orient="auto" markerUnits="strokeWidth">
+      <path d="M2 2 L13 8 L2 14 Z" fill="#1258f2"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M2 2 L12 7 L2 12 Z" fill="#665ee0"/>
+    </marker>
+    <marker id="arrowFuture" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M2 2 L12 7 L2 12 Z" fill="#8b5cf6"/>
+    </marker>
+  </defs>
+
+  <rect width="2400" height="1600" fill="#f7f4e9"/>
+  <rect width="2400" height="1600" filter="url(#noise)" opacity=".8"/>
+  <text x="1200" y="90" text-anchor="middle" class="title">WASMDEE FULL SYSTEM ARCHITECTURE</text>
+  <text x="1200" y="132" text-anchor="middle" class="subtitle">control plane, data plane, runtime hot path, benchmark proof, and future proto-faaslet boundary</text>
+
+  <!-- lanes -->
+  <rect x="72" y="180" width="2256" height="176" rx="24" fill="#fffdf6" stroke="#d9d2b9" stroke-width="2"/>
+  <rect x="72" y="392" width="2256" height="230" rx="24" fill="#f2f0ff" stroke="#cfc8f3" stroke-width="2"/>
+  <rect x="72" y="660" width="2256" height="426" rx="24" fill="#eef4ff" stroke="#c4d2f7" stroke-width="2"/>
+  <rect x="72" y="1124" width="2256" height="192" rx="24" fill="#f2fbf7" stroke="#bfe7d7" stroke-width="2"/>
+  <rect x="72" y="1354" width="2256" height="154" rx="24" fill="#f8f0ff" stroke="#d8c5f2" stroke-width="2"/>
+
+  <text x="100" y="214" class="lane">INTERFACES / EVENTS</text>
+  <text x="100" y="426" class="lane">LOCAL CONTROL PLANE</text>
+  <text x="100" y="694" class="lane">SINGLE-PROCESS WASM DATA PLANE</text>
+  <text x="100" y="1158" class="lane">MEASUREMENT + OBSERVABILITY</text>
+  <text x="100" y="1388" class="lane">RESEARCH / NEXT RUNTIME MILESTONE</text>
+
+  <!-- Interface boxes -->
+  <g filter="url(#shadow)">
+    <rect x="138" y="238" width="260" height="82" rx="18" fill="#ffffff" class="box"/>
+    <text x="268" y="272" text-anchor="middle" class="h">HTTP EVENTS</text>
+    <text x="268" y="299" text-anchor="middle" class="s">POST /route, /invoke/name</text>
+
+    <rect x="456" y="238" width="260" height="82" rx="18" fill="#ffffff" class="box"/>
+    <text x="586" y="272" text-anchor="middle" class="h">CLI</text>
+    <text x="586" y="299" text-anchor="middle" class="s">deploy, serve, invoke, bench</text>
+
+    <rect x="774" y="238" width="260" height="82" rx="18" fill="#ffffff" class="box"/>
+    <text x="904" y="272" text-anchor="middle" class="h">WAILS GUI</text>
+    <text x="904" y="299" text-anchor="middle" class="s">deploy picker + runtime console</text>
+
+    <rect x="1092" y="238" width="310" height="82" rx="18" fill="#ffffff" class="box"/>
+    <text x="1247" y="272" text-anchor="middle" class="h">YAML MANIFEST</text>
+    <text x="1247" y="299" text-anchor="middle" class="s">app, functions, routes, controls</text>
+
+    <rect x="1460" y="238" width="330" height="82" rx="18" fill="#ffffff" class="box"/>
+    <text x="1625" y="272" text-anchor="middle" class="h">BENCH TARGETS</text>
+    <text x="1625" y="299" text-anchor="middle" class="s">local .wasm or HTTP endpoint</text>
+
+    <rect x="1848" y="238" width="410" height="82" rx="18" fill="#15131f" stroke="#15131f" stroke-width="3"/>
+    <text x="2053" y="272" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="26" font-weight="900" fill="#fffdf7">TRUTH RULE</text>
+    <text x="2053" y="299" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="14" font-weight="700" fill="#fffdf7">measure Docker/OpenFaaS locally; online data = reference only</text>
+  </g>
+
+  <!-- Control plane -->
+  <g filter="url(#shadow)">
+    <rect x="138" y="460" width="254" height="116" rx="18" fill="#fffdf7" class="box"/>
+    <text x="265" y="496" text-anchor="middle" class="h">VALIDATION</text>
+    <text x="265" y="524" text-anchor="middle" class="s">names, routes, domains</text>
+    <text x="265" y="548" text-anchor="middle" class="s">scale-to-zero durations</text>
+
+    <rect x="448" y="460" width="286" height="116" rx="18" fill="#fffdf7" class="box"/>
+    <text x="591" y="496" text-anchor="middle" class="h">DEPLOYER</text>
+    <text x="591" y="524" text-anchor="middle" class="s">sha256 hash + copy</text>
+    <text x="591" y="548" text-anchor="middle" class="s">compile-once validation</text>
+
+    <rect x="790" y="460" width="300" height="116" rx="18" fill="#fffdf7" class="box"/>
+    <text x="940" y="496" text-anchor="middle" class="h">MODULE STORE</text>
+    <text x="940" y="524" text-anchor="middle" class="s">modules/{sha256}.wasm</text>
+    <text x="940" y="548" text-anchor="middle" class="s">content-addressed artifact</text>
+
+    <rect x="1146" y="460" width="340" height="116" rx="18" fill="#fffdf7" class="box"/>
+    <text x="1316" y="496" text-anchor="middle" class="h">SQLITE REGISTRY</text>
+    <text x="1316" y="524" text-anchor="middle" class="s">name, path, route, URL</text>
+    <text x="1316" y="548" text-anchor="middle" class="s">app, domain, controls</text>
+
+    <rect x="1542" y="460" width="306" height="116" rx="18" fill="#fffdf7" class="box"/>
+    <text x="1695" y="496" text-anchor="middle" class="h">PUBLIC URL META</text>
+    <text x="1695" y="524" text-anchor="middle" class="s">random or custom domain</text>
+    <text x="1695" y="548" text-anchor="middle" class="s">DNS/TLS not provisioned yet</text>
+
+    <rect x="1904" y="460" width="354" height="116" rx="18" fill="#fffdf7" class="box"/>
+    <text x="2081" y="496" text-anchor="middle" class="h">FUNCTION CONTROLS</text>
+    <text x="2081" y="524" text-anchor="middle" class="s">preload, zero_copy flag</text>
+    <text x="2081" y="548" text-anchor="middle" class="s">max_concurrency, scale-to-zero</text>
+  </g>
+
+  <!-- Data plane gateway and dispatcher -->
+  <g filter="url(#shadow)">
+    <rect x="138" y="728" width="300" height="154" rx="20" fill="#ffffff" class="box"/>
+    <text x="288" y="764" text-anchor="middle" class="h">HTTP GATEWAY</text>
+    <text x="288" y="795" text-anchor="middle" class="s">GET /functions</text>
+    <text x="288" y="817" text-anchor="middle" class="s">GET /runtime, /healthz</text>
+    <text x="288" y="839" text-anchor="middle" class="s">POST /route, /invoke/name</text>
+
+    <rect x="500" y="728" width="322" height="154" rx="20" fill="#ffffff" class="box"/>
+    <text x="661" y="764" text-anchor="middle" class="h">ROUTE RESOLVER</text>
+    <text x="661" y="795" text-anchor="middle" class="s">GetFunctionByRoute(path)</text>
+    <text x="661" y="817" text-anchor="middle" class="s">or GetFunction(name)</text>
+    <text x="661" y="839" text-anchor="middle" class="s">body max: 8 MiB</text>
+
+    <rect x="884" y="728" width="378" height="154" rx="20" fill="#ffffff" class="box"/>
+    <text x="1073" y="764" text-anchor="middle" class="h">DISPATCHER</text>
+    <text x="1073" y="795" text-anchor="middle" class="s">bounded queue, immediate reject</text>
+    <text x="1073" y="817" text-anchor="middle" class="s">min/max workers, idle retirement</text>
+    <text x="1073" y="839" text-anchor="middle" class="s">per-function telemetry hooks</text>
+
+    <rect x="1324" y="728" width="342" height="154" rx="20" fill="#ffffff" class="box"/>
+    <text x="1495" y="764" text-anchor="middle" class="h">WORKERS</text>
+    <text x="1495" y="795" text-anchor="middle" class="s">submit job -> Engine.Invoke</text>
+    <text x="1495" y="817" text-anchor="middle" class="s">default timeout context</text>
+    <text x="1495" y="839" text-anchor="middle" class="s">complete/error accounting</text>
+
+    <rect x="1728" y="728" width="530" height="154" rx="20" fill="#ffffff" class="box"/>
+    <text x="1993" y="764" text-anchor="middle" class="h">BACKPRESSURE CONTRACT</text>
+    <text x="1993" y="795" text-anchor="middle" class="s">queue full -> ErrQueueFull -> HTTP 429</text>
+    <text x="1993" y="817" text-anchor="middle" class="s">dispatcher closed -> HTTP 503</text>
+    <text x="1993" y="839" text-anchor="middle" class="s">non-zero Wasm exit -> HTTP 502</text>
+  </g>
+
+  <!-- Runtime internals -->
+  <g filter="url(#shadow)">
+    <rect x="138" y="932" width="318" height="116" rx="20" fill="#fffdf7" class="box"/>
+    <text x="297" y="968" text-anchor="middle" class="h">WAZERO RUNTIME</text>
+    <text x="297" y="999" text-anchor="middle" class="s">compiler runtime config</text>
+    <text x="297" y="1022" text-anchor="middle" class="s">CloseOnContextDone</text>
+
+    <rect x="512" y="932" width="288" height="116" rx="20" fill="#fffdf7" class="box"/>
+    <text x="656" y="968" text-anchor="middle" class="h">WASI IMPORTS</text>
+    <text x="656" y="999" text-anchor="middle" class="s">stdin, stdout, stderr</text>
+    <text x="656" y="1022" text-anchor="middle" class="s">argv command module</text>
+
+    <rect x="856" y="932" width="320" height="116" rx="20" fill="#fffdf7" class="box"/>
+    <text x="1016" y="968" text-anchor="middle" class="h">HOST ABI</text>
+    <text x="1016" y="999" text-anchor="middle" class="s">import wasmdee.invoke</text>
+    <text x="1016" y="1022" text-anchor="middle" class="s">in-process function call</text>
+
+    <rect x="1232" y="932" width="354" height="116" rx="20" fill="#fffdf7" class="box"/>
+    <text x="1409" y="968" text-anchor="middle" class="h">COMPILED WARM POOL</text>
+    <text x="1409" y="999" text-anchor="middle" class="s">map wasm path -> compiled module</text>
+    <text x="1409" y="1022" text-anchor="middle" class="s">touch lastUsed on hit</text>
+
+    <rect x="1642" y="932" width="300" height="116" rx="20" fill="#fffdf7" class="box"/>
+    <text x="1792" y="968" text-anchor="middle" class="h">FILE CACHE</text>
+    <text x="1792" y="999" text-anchor="middle" class="s">Wazero compilation cache</text>
+    <text x="1792" y="1022" text-anchor="middle" class="s">rehydrate after eviction</text>
+
+    <rect x="1998" y="932" width="260" height="116" rx="20" fill="#fffdf7" class="box"/>
+    <text x="2128" y="968" text-anchor="middle" class="h">REAPER</text>
+    <text x="2128" y="999" text-anchor="middle" class="s">EvictIdle()</text>
+    <text x="2128" y="1022" text-anchor="middle" class="s">compiled scale-to-zero</text>
+  </g>
+
+  <!-- Invocation isolation detail -->
+  <g filter="url(#shadow)">
+    <rect x="138" y="1098" width="2120" height="0" rx="0" fill="none"/>
+    <rect x="138" y="1098" width="462" height="0" opacity="0"/>
+  </g>
+
+  <!-- Observability lane -->
+  <g filter="url(#shadow)">
+    <rect x="138" y="1190" width="330" height="82" rx="18" fill="#ffffff" class="box"/>
+    <text x="303" y="1223" text-anchor="middle" class="h">BENCH LOCAL</text>
+    <text x="303" y="1251" text-anchor="middle" class="s">cold, rehydrate, warm</text>
+
+    <rect x="520" y="1190" width="330" height="82" rx="18" fill="#ffffff" class="box"/>
+    <text x="685" y="1223" text-anchor="middle" class="h">BENCH HTTP</text>
+    <text x="685" y="1251" text-anchor="middle" class="s">Docker/OpenFaaS endpoints</text>
+
+    <rect x="902" y="1190" width="330" height="82" rx="18" fill="#ffffff" class="box"/>
+    <text x="1067" y="1223" text-anchor="middle" class="h">REPORTS</text>
+    <text x="1067" y="1251" text-anchor="middle" class="s">text, JSON, HTML</text>
+
+    <rect x="1284" y="1190" width="402" height="82" rx="18" fill="#ffffff" class="box"/>
+    <text x="1485" y="1223" text-anchor="middle" class="h">ENGINE STATS</text>
+    <text x="1485" y="1251" text-anchor="middle" class="s">compile hits, invocations, evictions, host calls</text>
+
+    <rect x="1738" y="1190" width="520" height="82" rx="18" fill="#ffffff" class="box"/>
+    <text x="1998" y="1223" text-anchor="middle" class="h">DISPATCHER + FUNCTION STATS</text>
+    <text x="1998" y="1251" text-anchor="middle" class="s">queue, workers, accepted, rejected, failures, EWMA latency</text>
+  </g>
+
+  <!-- Future lane -->
+  <g filter="url(#shadow)">
+    <rect x="138" y="1418" width="330" height="58" rx="16" fill="#fffdf7" stroke="#8b5cf6" stroke-width="3" stroke-dasharray="10 10"/>
+    <text x="303" y="1455" text-anchor="middle" class="m">handler ABI</text>
+
+    <rect x="520" y="1418" width="330" height="58" rx="16" fill="#fffdf7" stroke="#8b5cf6" stroke-width="3" stroke-dasharray="10 10"/>
+    <text x="685" y="1455" text-anchor="middle" class="m">proto-faaslet template</text>
+
+    <rect x="902" y="1418" width="330" height="58" rx="16" fill="#fffdf7" stroke="#8b5cf6" stroke-width="3" stroke-dasharray="10 10"/>
+    <text x="1067" y="1455" text-anchor="middle" class="m">instance pool</text>
+
+    <rect x="1284" y="1418" width="330" height="58" rx="16" fill="#fffdf7" stroke="#8b5cf6" stroke-width="3" stroke-dasharray="10 10"/>
+    <text x="1449" y="1455" text-anchor="middle" class="m">snapshot / reset</text>
+
+    <rect x="1666" y="1418" width="330" height="58" rx="16" fill="#fffdf7" stroke="#8b5cf6" stroke-width="3" stroke-dasharray="10 10"/>
+    <text x="1831" y="1455" text-anchor="middle" class="m">CoW / lazy restore</text>
+
+    <rect x="2048" y="1418" width="210" height="58" rx="16" fill="#15131f" stroke="#15131f" stroke-width="3"/>
+    <text x="2153" y="1455" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="18" font-weight="900" fill="#fffdf7">MEASURE FIRST</text>
+  </g>
+
+  <!-- Hot arrows -->
+  <path d="M398 279 C428 279 428 279 456 279" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M716 279 C746 279 746 279 774 279" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M288 320 C288 390 265 398 265 460" class="meta" marker-end="url(#arrowPurple)"/>
+  <path d="M1247 320 C1247 385 265 385 265 460" class="meta" marker-end="url(#arrowPurple)"/>
+  <path d="M392 518 C420 518 420 518 448 518" class="meta" marker-end="url(#arrowPurple)"/>
+  <path d="M734 518 C762 518 762 518 790 518" class="meta" marker-end="url(#arrowPurple)"/>
+  <path d="M734 548 C910 618 1150 592 1316 576" class="meta" marker-end="url(#arrowPurple)"/>
+  <path d="M1486 518 C1514 518 1514 518 1542 518" class="meta" marker-end="url(#arrowPurple)"/>
+  <path d="M1848 518 C1876 518 1876 518 1904 518" class="meta" marker-end="url(#arrowPurple)"/>
+
+  <path d="M288 356 C288 500 288 615 288 728" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M904 320 C904 610 661 602 661 728" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M438 805 C468 805 470 805 500 805" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M822 805 C852 805 854 805 884 805" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M1262 805 C1292 805 1294 805 1324 805" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M1495 882 C1495 904 297 904 297 932" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M456 990 C484 990 484 990 512 990" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M800 990 C828 990 828 990 856 990" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M1176 990 C1204 990 1204 990 1232 990" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M1586 990 C1614 990 1614 990 1642 990" class="meta" marker-end="url(#arrowPurple)"/>
+  <path d="M1942 990 C1970 990 1970 990 1998 990" class="future" marker-end="url(#arrowFuture)"/>
+
+  <!-- Fresh instance chip diagram -->
+  <g filter="url(#shadow)">
+    <rect x="138" y="1088" width="460" height="0" opacity="0"/>
+    <path d="M568 1078 L746 1078 L792 1124 L792 1164 L614 1164 L568 1118 Z" fill="#d8faeb" stroke="#0f766e" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M568 1078 L614 1124 L792 1124 L746 1078 Z" fill="#effff8" stroke="#0f766e" stroke-width="3" stroke-linejoin="round"/>
+    <text x="680" y="1116" text-anchor="middle" class="m">FRESH INSTANCE</text>
+    <text x="680" y="1145" text-anchor="middle" class="xs">linear memory isolated</text>
+
+    <rect x="850" y="1088" width="220" height="64" rx="14" fill="#ffffff" stroke="#0f766e" stroke-width="3"/>
+    <text x="960" y="1118" text-anchor="middle" class="m">stdin + argv</text>
+    <text x="960" y="1140" text-anchor="middle" class="xs">request input</text>
+
+    <rect x="1128" y="1088" width="220" height="64" rx="14" fill="#ffffff" stroke="#0f766e" stroke-width="3"/>
+    <text x="1238" y="1118" text-anchor="middle" class="m">_start</text>
+    <text x="1238" y="1140" text-anchor="middle" class="xs">WASI command</text>
+
+    <rect x="1406" y="1088" width="260" height="64" rx="14" fill="#ffffff" stroke="#0f766e" stroke-width="3"/>
+    <text x="1536" y="1118" text-anchor="middle" class="m">stdout/stderr</text>
+    <text x="1536" y="1140" text-anchor="middle" class="xs">exit code + latency</text>
+  </g>
+  <path d="M1409 1048 C1409 1078 680 1058 680 1078" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M792 1120 C820 1120 822 1120 850 1120" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M1070 1120 C1098 1120 1100 1120 1128 1120" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M1348 1120 C1376 1120 1378 1120 1406 1120" class="hot" marker-end="url(#arrowBlue)"/>
+  <path d="M1666 1120 C1780 1120 1885 1152 1998 1190" class="meta" marker-end="url(#arrowPurple)"/>
+
+  <!-- Benchmark arrows -->
+  <path d="M1625 320 C1625 645 303 820 303 1190" class="meta" marker-end="url(#arrowPurple)"/>
+  <path d="M1625 320 C1625 760 685 830 685 1190" class="meta" marker-end="url(#arrowPurple)"/>
+  <path d="M468 1231 C494 1231 494 1231 520 1231" class="meta" marker-end="url(#arrowPurple)"/>
+  <path d="M850 1231 C876 1231 876 1231 902 1231" class="meta" marker-end="url(#arrowPurple)"/>
+  <path d="M1232 1231 C1258 1231 1258 1231 1284 1231" class="meta" marker-end="url(#arrowPurple)"/>
+  <path d="M1686 1231 C1712 1231 1712 1231 1738 1231" class="meta" marker-end="url(#arrowPurple)"/>
+
+  <!-- Future arrows -->
+  <path d="M468 1447 C494 1447 494 1447 520 1447" class="future" marker-end="url(#arrowFuture)"/>
+  <path d="M850 1447 C876 1447 876 1447 902 1447" class="future" marker-end="url(#arrowFuture)"/>
+  <path d="M1232 1447 C1258 1447 1258 1447 1284 1447" class="future" marker-end="url(#arrowFuture)"/>
+  <path d="M1614 1447 C1640 1447 1640 1447 1666 1447" class="future" marker-end="url(#arrowFuture)"/>
+  <path d="M1996 1447 C2022 1447 2022 1447 2048 1447" class="future" marker-end="url(#arrowFuture)"/>
+
+  <!-- Truth table badges -->
+  <g>
+    <rect x="142" y="610" width="222" height="34" rx="17" fill="#15131f"/>
+    <text x="253" y="632" text-anchor="middle" class="badge" fill="#fffdf7">CONTROL PLANE IS LOCAL</text>
+    <rect x="418" y="610" width="250" height="34" rx="17" fill="#15131f"/>
+    <text x="543" y="632" text-anchor="middle" class="badge" fill="#fffdf7">NO CONTAINER IMAGE NEEDED</text>
+    <rect x="728" y="610" width="290" height="34" rx="17" fill="#15131f"/>
+    <text x="873" y="632" text-anchor="middle" class="badge" fill="#fffdf7">PUBLIC URL IS METADATA TODAY</text>
+
+    <rect x="142" y="1060" width="280" height="34" rx="17" fill="#15131f"/>
+    <text x="282" y="1082" text-anchor="middle" class="badge" fill="#fffdf7">COMPILED CODE IS SHARED</text>
+    <rect x="452" y="1060" width="310" height="34" rx="17" fill="#15131f"/>
+    <text x="607" y="1082" text-anchor="middle" class="badge" fill="#fffdf7">EXECUTION MEMORY IS FRESH</text>
+    <rect x="792" y="1060" width="324" height="34" rx="17" fill="#15131f"/>
+    <text x="954" y="1082" text-anchor="middle" class="badge" fill="#fffdf7">NOT TRUE SNAPSHOT/COW YET</text>
+  </g>
+</svg>

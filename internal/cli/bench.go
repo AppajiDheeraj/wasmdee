@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -36,6 +37,7 @@ var (
 	benchScaleDown   time.Duration
 	benchScaleToZero time.Duration
 	benchJSON        bool
+	benchReportPath  string
 )
 
 var benchCmd = &cobra.Command{
@@ -64,15 +66,32 @@ type benchReport struct {
 	Label       string                  `json:"label,omitempty"`
 	Target      string                  `json:"target"`
 	Mode        string                  `json:"mode"`
+	GeneratedAt string                  `json:"generated_at"`
 	Iterations  int                     `json:"iterations"`
 	Warmup      int                     `json:"warmup"`
 	Concurrency int                     `json:"concurrency"`
+	System      benchSystem             `json:"system"`
+	Memory      *benchMemory            `json:"memory,omitempty"`
 	Cold        *benchSeries            `json:"cold,omitempty"`
 	Rehydrate   *benchSeries            `json:"rehydrate,omitempty"`
 	Warm        benchSeries             `json:"warm"`
 	Engine      *wasmrt.EngineStats     `json:"engine,omitempty"`
 	Dispatcher  *wasmrt.DispatcherStats `json:"dispatcher,omitempty"`
 	Notes       []string                `json:"notes,omitempty"`
+}
+
+type benchSystem struct {
+	OS        string `json:"os"`
+	Arch      string `json:"arch"`
+	CPUs      int    `json:"cpus"`
+	GoVersion string `json:"go_version"`
+}
+
+type benchMemory struct {
+	AllocBeforeBytes uint64 `json:"alloc_before_bytes"`
+	AllocAfterBytes  uint64 `json:"alloc_after_bytes"`
+	AllocDeltaBytes  int64  `json:"alloc_delta_bytes"`
+	SysBytes         uint64 `json:"sys_bytes"`
 }
 
 type benchSeries struct {
@@ -102,6 +121,7 @@ func init() {
 	benchCmd.Flags().DurationVar(&benchScaleDown, "scale-down-after", 5*time.Second, "idle time before benchmark workers retire")
 	benchCmd.Flags().DurationVar(&benchScaleToZero, "scale-to-zero-after", 0, "idle time before local compiled modules are evicted; 0 disables background eviction")
 	benchCmd.Flags().BoolVar(&benchJSON, "json", false, "print machine-readable JSON")
+	benchCmd.Flags().StringVar(&benchReportPath, "report", "", "write benchmark report to .json or .html")
 }
 
 func benchmarkWasm(ctx context.Context, wasmPath string) (benchReport, error) {
@@ -124,9 +144,11 @@ func benchmarkWasm(ctx context.Context, wasmPath string) (benchReport, error) {
 		Label:       benchLabel,
 		Target:      wasmPath,
 		Mode:        "wasmdee-local",
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		Iterations:  benchIterations,
 		Warmup:      benchWarmup,
 		Concurrency: benchConcurrency,
+		System:      currentBenchSystem(),
 		Notes: []string{
 			"cold measures a fresh wazero runtime and empty compile cache per run",
 			"rehydrate measures reload after evicting the in-process compiled module while retaining the file-backed compilation cache",
@@ -182,10 +204,20 @@ func benchmarkWasm(ctx context.Context, wasmPath string) (benchReport, error) {
 		report.Rehydrate = &rehydrate
 	}
 
+	var before goruntime.MemStats
+	goruntime.ReadMemStats(&before)
 	report.Warm = runMeasured(benchIterations, benchConcurrency, func() error {
 		_, err := dispatcher.Submit(ctx, benchmarkInvocation(fn))
 		return err
 	})
+	var after goruntime.MemStats
+	goruntime.ReadMemStats(&after)
+	report.Memory = &benchMemory{
+		AllocBeforeBytes: before.Alloc,
+		AllocAfterBytes:  after.Alloc,
+		AllocDeltaBytes:  int64(after.Alloc) - int64(before.Alloc),
+		SysBytes:         after.Sys,
+	}
 	engineStats := engine.Stats()
 	dispatcherStats := dispatcher.Stats()
 	report.Engine = &engineStats
@@ -230,9 +262,11 @@ func benchmarkHTTP(ctx context.Context, target string) (benchReport, error) {
 		Label:       benchLabel,
 		Target:      target,
 		Mode:        "http",
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		Iterations:  benchIterations,
 		Warmup:      benchWarmup,
 		Concurrency: benchConcurrency,
+		System:      currentBenchSystem(),
 		Warm:        runMeasured(benchIterations, benchConcurrency, call),
 		Notes: []string{
 			"HTTP mode is intended for apples-to-apples comparison against wasmdee serve, OpenFaaS, or a Dockerized endpoint",
@@ -361,6 +395,12 @@ func percentile(sorted []float64, p float64) float64 {
 }
 
 func writeBenchReport(cmd *cobra.Command, report benchReport) error {
+	if benchReportPath != "" {
+		if err := writeBenchReportFile(benchReportPath, report); err != nil {
+			return err
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "report %s\n", benchReportPath)
+	}
 	if benchJSON {
 		encoder := json.NewEncoder(cmd.OutOrStdout())
 		encoder.SetIndent("", "  ")
@@ -405,6 +445,111 @@ func writeBenchReport(cmd *cobra.Command, report benchReport) error {
 	}
 	return nil
 }
+
+func currentBenchSystem() benchSystem {
+	return benchSystem{
+		OS:        goruntime.GOOS,
+		Arch:      goruntime.GOARCH,
+		CPUs:      goruntime.NumCPU(),
+		GoVersion: goruntime.Version(),
+	}
+}
+
+func writeBenchReportFile(path string, report benchReport) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil && filepath.Dir(path) != "." {
+		return fmt.Errorf("create report directory: %w", err)
+	}
+	if strings.HasSuffix(strings.ToLower(path), ".html") {
+		file, err := os.Create(path)
+		if err != nil {
+			return fmt.Errorf("create HTML report: %w", err)
+		}
+		defer file.Close()
+		if err := benchHTMLTemplate.Execute(file, report); err != nil {
+			return fmt.Errorf("write HTML report: %w", err)
+		}
+		return nil
+	}
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode report JSON: %w", err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		return fmt.Errorf("write report JSON: %w", err)
+	}
+	return nil
+}
+
+var benchHTMLTemplate = template.Must(template.New("bench-report").Funcs(template.FuncMap{
+	"bar": func(value float64) float64 {
+		if value <= 0 {
+			return 1
+		}
+		if value > 100 {
+			return 100
+		}
+		return value
+	},
+}).Parse(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>wasmdee benchmark report</title>
+  <style>
+    :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif; }
+    body { margin: 0; background: #f7f8fa; color: #111827; }
+    main { max-width: 980px; margin: 0 auto; padding: 48px 24px; }
+    header { margin-bottom: 28px; }
+    h1 { margin: 0; font-size: 34px; letter-spacing: -0.03em; }
+    p { color: #667085; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+    .card { background: white; border: 1px solid #dde2e7; border-radius: 12px; padding: 18px; box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06); }
+    .label { color: #667085; font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 700; }
+    .value { margin-top: 8px; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; overflow: hidden; border-radius: 12px; background: white; border: 1px solid #dde2e7; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid #eef1f4; text-align: right; font-variant-numeric: tabular-nums; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: #667085; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; }
+    .bar { height: 8px; border-radius: 999px; background: #eef1f4; overflow: hidden; }
+    .bar > span { display: block; height: 100%; background: #111827; }
+    .note { margin-top: 24px; font-size: 13px; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0f1419; color: #f7f8fa; }
+      .card, table { background: #151b22; border-color: #29313b; }
+      th, td { border-color: #29313b; }
+      .bar { background: #202832; }
+      .bar > span { background: #2dd4bf; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>wasmdee benchmark report</h1>
+    <p>{{.Label}} {{.Mode}} · {{.GeneratedAt}} · {{.Target}}</p>
+  </header>
+  <section class="grid">
+    <div class="card"><div class="label">Concurrency</div><div class="value">{{.Concurrency}}</div></div>
+    <div class="card"><div class="label">Iterations</div><div class="value">{{.Iterations}}</div></div>
+    <div class="card"><div class="label">System</div><div class="value">{{.System.OS}}/{{.System.Arch}}</div><p>{{.System.CPUs}} CPUs · {{.System.GoVersion}}</p></div>
+    {{if .Memory}}<div class="card"><div class="label">Heap delta</div><div class="value">{{.Memory.AllocDeltaBytes}}</div><p>bytes during warm run</p></div>{{end}}
+  </section>
+  <table>
+    <thead><tr><th>Path</th><th>Count</th><th>Errors</th><th>Avg ms</th><th>P50</th><th>P95</th><th>P99</th><th>Throughput/s</th></tr></thead>
+    <tbody>
+      {{if .Cold}}<tr><td>cold</td><td>{{.Cold.Count}}</td><td>{{.Cold.Errors}}</td><td>{{printf "%.3f" .Cold.AvgMS}}</td><td>{{printf "%.3f" .Cold.P50MS}}</td><td>{{printf "%.3f" .Cold.P95MS}}</td><td>{{printf "%.3f" .Cold.P99MS}}</td><td>{{printf "%.1f" .Cold.ThroughputPS}}</td></tr>{{end}}
+      {{if .Rehydrate}}<tr><td>rehydrate</td><td>{{.Rehydrate.Count}}</td><td>{{.Rehydrate.Errors}}</td><td>{{printf "%.3f" .Rehydrate.AvgMS}}</td><td>{{printf "%.3f" .Rehydrate.P50MS}}</td><td>{{printf "%.3f" .Rehydrate.P95MS}}</td><td>{{printf "%.3f" .Rehydrate.P99MS}}</td><td>{{printf "%.1f" .Rehydrate.ThroughputPS}}</td></tr>{{end}}
+      <tr><td>warm</td><td>{{.Warm.Count}}</td><td>{{.Warm.Errors}}</td><td>{{printf "%.3f" .Warm.AvgMS}}</td><td>{{printf "%.3f" .Warm.P50MS}}</td><td>{{printf "%.3f" .Warm.P95MS}}</td><td>{{printf "%.3f" .Warm.P99MS}}</td><td>{{printf "%.1f" .Warm.ThroughputPS}}</td></tr>
+    </tbody>
+  </table>
+  <section class="card note">
+    <div class="label">Notes</div>
+    {{range .Notes}}<p>{{.}}</p>{{end}}
+  </section>
+</main>
+</body>
+</html>`))
 
 func printBenchSeries(cmd *cobra.Command, name string, series benchSeries) {
 	fmt.Fprintf(cmd.OutOrStdout(), "%-9s count=%d errors=%d avg=%.3fms p50=%.3fms p95=%.3fms p99=%.3fms min=%.3fms max=%.3fms throughput=%.1f/s\n",

@@ -27,6 +27,14 @@ var infiniteLoopWasm = []byte{
 	0x0a, 0x09, 0x01, 0x07, 0x00, 0x03, 0x40, 0x0c, 0x00, 0x0b, 0x0b,
 }
 
+var handlerWasm = []byte{
+	0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+	0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7f,
+	0x03, 0x02, 0x01, 0x00,
+	0x07, 0x12, 0x01, 0x0e, 0x77, 0x61, 0x73, 0x6d, 0x64, 0x65, 0x65, 0x5f, 0x68, 0x61, 0x6e, 0x64, 0x6c, 0x65, 0x00, 0x00,
+	0x0a, 0x06, 0x01, 0x04, 0x00, 0x41, 0x07, 0x0b,
+}
+
 func TestEngineInvokeReusesCompiledModule(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -81,6 +89,70 @@ func TestEnginePreloadCompilesFunctions(t *testing.T) {
 	}
 	if got := engine.Stats().CompiledModules; got != 1 {
 		t.Fatalf("CompiledModules = %d, want 1", got)
+	}
+}
+
+func TestEngineProtoStoreTracksWASICommandTemplate(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	wasmPath := writeTestWasm(t, dir, "empty.wasm", emptyStartWasm)
+
+	engine, err := NewEngine(ctx, EngineConfig{CacheDir: filepath.Join(dir, "cache")})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	defer engine.Close(ctx)
+
+	fn := state.Function{Name: "empty", WasmPath: wasmPath}
+	if result := engine.Preload(ctx, []state.Function{fn}); result.Compiled != 1 {
+		t.Fatalf("Preload().Compiled = %d, want 1", result.Compiled)
+	}
+
+	stats := engine.Stats()
+	if stats.ProtoFaaslets != 1 {
+		t.Fatalf("ProtoFaaslets = %d, want 1", stats.ProtoFaaslets)
+	}
+	if stats.InstancePools != 0 || stats.WarmInstances != 0 {
+		t.Fatalf("InstancePools/WarmInstances = %d/%d, want 0/0", stats.InstancePools, stats.WarmInstances)
+	}
+	templates := engine.ProtoFaaslets()
+	if len(templates) != 1 {
+		t.Fatalf("ProtoFaaslets() len = %d, want 1", len(templates))
+	}
+	if templates[0].ABI != abiWASICommand || templates[0].PoolEligible {
+		t.Fatalf("template = %+v, want wasi-command and not pool eligible", templates[0])
+	}
+}
+
+func TestEnginePreloadCreatesHandlerInstancePool(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	wasmPath := writeTestWasm(t, dir, "handler.wasm", handlerWasm)
+
+	engine, err := NewEngine(ctx, EngineConfig{CacheDir: filepath.Join(dir, "cache")})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	defer engine.Close(ctx)
+
+	fn := state.Function{Name: "handler", WasmPath: wasmPath}
+	if result := engine.Preload(ctx, []state.Function{fn}); result.Compiled != 1 || len(result.Failed) != 0 {
+		t.Fatalf("Preload() = %+v, want compiled=1 failed=0", result)
+	}
+
+	stats := engine.Stats()
+	if stats.ProtoFaaslets != 1 {
+		t.Fatalf("ProtoFaaslets = %d, want 1", stats.ProtoFaaslets)
+	}
+	if stats.InstancePools != 1 || stats.WarmInstances != 1 {
+		t.Fatalf("InstancePools/WarmInstances = %d/%d, want 1/1", stats.InstancePools, stats.WarmInstances)
+	}
+	templates := engine.ProtoFaaslets()
+	if len(templates) != 1 {
+		t.Fatalf("ProtoFaaslets() len = %d, want 1", len(templates))
+	}
+	if templates[0].ABI != abiHandler || !templates[0].PoolEligible || templates[0].PoolSize != 1 {
+		t.Fatalf("template = %+v, want handler pool size 1", templates[0])
 	}
 }
 

@@ -1,0 +1,14 @@
+version: 1
+name: hello-api
+domain: api.example.com
+
+functions:
+  - name: hello
+    source: ./hello.wasm
+    route: /hello
+    deploy: true
+    controls:
+      preload: true
+      zero_copy: true
+      max_concurrency: 64
+      scale_to_zero_after: 5m

@@ -43,21 +43,21 @@ export function InvokeFunction({ functionRows = [], response, selectedFunction, 
           <h1 className="text-2xl font-semibold tracking-tight">Invoke</h1>
           <p className="mt-1 text-sm text-muted-foreground">Send stdin and argv to a deployed WASI command module.</p>
         </div>
-        <Button type="button" className="h-8 rounded-md px-3 text-sm" onClick={invoke} disabled={!currentFunction}>
+        <Button type="button" className="h-8 rounded-lg px-3 text-sm shadow-sm" onClick={invoke} disabled={!currentFunction}>
           <Play />
           Invoke
         </Button>
       </section>
 
-      <Card className="rounded-md shadow-none">
-        <CardHeader className="border-b border-border p-4">
+      <Card className="wm-panel overflow-hidden rounded-xl shadow-none">
+        <CardHeader className="border-b border-border/80 p-4">
           <CardTitle className="text-base">Request</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 p-4">
           <label className="grid gap-1.5">
             <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Function</span>
             <select
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-foreground"
+              className="h-9 rounded-lg border border-input bg-background/70 px-3 text-sm outline-none transition focus:border-foreground"
               value={currentFunction?.name || ''}
               onChange={(event) => setSelectedName(event.target.value)}
             >
@@ -72,7 +72,7 @@ export function InvokeFunction({ functionRows = [], response, selectedFunction, 
           <label className="grid gap-1.5">
             <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Arguments</span>
             <Input
-              className="h-9 rounded-md bg-background font-mono text-sm"
+              className="h-9 rounded-lg bg-background/70 font-mono text-sm"
               placeholder="arg1, arg2, arg3"
               value={argText}
               onChange={(event) => setArgText(event.target.value)}
@@ -82,7 +82,7 @@ export function InvokeFunction({ functionRows = [], response, selectedFunction, 
           <label className="grid gap-1.5">
             <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">stdin body</span>
             <textarea
-              className="min-h-[220px] resize-y rounded-md border border-border bg-background p-3 font-mono text-sm leading-6 outline-none focus:border-foreground"
+              className="min-h-[220px] resize-y rounded-lg border border-border bg-background/70 p-3 font-mono text-sm leading-6 outline-none transition focus:border-foreground"
               placeholder="Request body passed to stdin"
               value={body}
               onChange={(event) => setBody(event.target.value)}
@@ -91,8 +91,8 @@ export function InvokeFunction({ functionRows = [], response, selectedFunction, 
         </CardContent>
       </Card>
 
-      <Card className="rounded-md shadow-none">
-        <CardHeader className="border-b border-border p-4">
+      <Card className="wm-panel overflow-hidden rounded-xl shadow-none">
+        <CardHeader className="border-b border-border/80 p-4">
           <div className="flex items-center justify-between gap-3">
             <CardTitle className="text-base">Response</CardTitle>
             {response?.latency_ms !== undefined && (
@@ -102,7 +102,7 @@ export function InvokeFunction({ functionRows = [], response, selectedFunction, 
         </CardHeader>
         <CardContent className="min-h-[190px] p-4">
           {response ? (
-            <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap rounded-md bg-secondary p-3 font-mono text-sm leading-6">
+            <pre className="wm-command max-h-[360px] overflow-auto whitespace-pre-wrap rounded-lg p-3 font-mono text-sm leading-6">
               {JSON.stringify(response, null, 2)}
             </pre>
           ) : (
@@ -118,14 +118,14 @@ export function InvokeFunction({ functionRows = [], response, selectedFunction, 
 
 function EmptyInvoke({ onDeploy }) {
   return (
-    <div className="grid min-h-[520px] place-items-center rounded-md border border-border bg-card p-8 text-center">
+    <div className="wm-panel grid min-h-[520px] place-items-center rounded-xl p-8 text-center">
       <div>
-        <div className="mx-auto flex size-12 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+        <div className="mx-auto flex size-12 items-center justify-center rounded-xl bg-secondary text-muted-foreground">
           <Box className="h-5 w-5" />
         </div>
         <h1 className="mt-4 text-xl font-semibold">No function to invoke</h1>
         <p className="mt-2 max-w-sm text-sm text-muted-foreground">Deploy a `.wasm` module, then send stdin and argv from this console.</p>
-        <Button type="button" className="mt-4 h-8 rounded-md px-3 text-sm" onClick={onDeploy}>
+        <Button type="button" className="mt-4 h-8 rounded-lg px-3 text-sm shadow-sm" onClick={onDeploy}>
           <Plus />
           Deploy function
         </Button>

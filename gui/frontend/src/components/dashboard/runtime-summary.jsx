@@ -6,6 +6,7 @@ export function RuntimeSummary({ snapshot }) {
   const dispatcher = snapshot?.dispatcher || {};
   const preload = snapshot?.preload || {};
   const functionStats = snapshot?.function_stats || [];
+  const protoFaaslets = snapshot?.proto_faaslets || [];
   const queueSize = dispatcher.queue_size || 0;
   const queued = dispatcher.queued || 0;
   const queuePercent = queueSize > 0 ? Math.min(100, (queued / queueSize) * 100) : 0;
@@ -16,6 +17,8 @@ export function RuntimeSummary({ snapshot }) {
     ['Cache hits', engine.compile_hits ?? 0],
     ['Evictions', engine.evictions ?? 0],
     ['Host calls', engine.host_calls ?? 0],
+    ['Proto templates', engine.proto_faaslets ?? protoFaaslets.length],
+    ['Warm instances', engine.warm_instances ?? 0],
   ];
 
   const dispatcherRows = [
@@ -28,14 +31,14 @@ export function RuntimeSummary({ snapshot }) {
 
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-      <Card className="rounded-md shadow-none">
-        <CardHeader className="border-b border-border p-4">
+      <Card className="wm-panel overflow-hidden rounded-xl shadow-none">
+        <CardHeader className="border-b border-border/80 p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base">Runtime</CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">Local Wazero engine and dispatcher state.</p>
             </div>
-            <span className="inline-flex items-center gap-2 rounded-md border border-border px-2.5 py-1 text-xs font-medium">
+            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-2.5 py-1 text-xs font-medium">
               <span className="size-1.5 rounded-full bg-emerald-500" />
               {snapshot?.status || 'local'}
             </span>
@@ -56,28 +59,30 @@ export function RuntimeSummary({ snapshot }) {
         </CardContent>
       </Card>
 
-      <Card className="rounded-md shadow-none">
-        <CardHeader className="border-b border-border p-4">
+      <Card className="wm-panel overflow-hidden rounded-xl shadow-none">
+        <CardHeader className="border-b border-border/80 p-4">
           <CardTitle className="text-base">Preload</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">Startup compilation result for registered modules.</p>
         </CardHeader>
         <CardContent className="grid gap-3 p-4">
           <RuntimePill icon={Boxes} label="Requested" value={preload.requested ?? 0} />
           <RuntimePill icon={Zap} label="Compiled" value={preload.compiled ?? 0} />
+          <RuntimePill icon={Boxes} label="Templates" value={engine.proto_faaslets ?? protoFaaslets.length} />
+          <RuntimePill icon={Zap} label="Pooled instances" value={engine.warm_instances ?? 0} />
           <RuntimePill icon={Activity} label="Failures" value={preload.failed?.length ?? 0} tone={preload.failed?.length ? 'bad' : 'ok'} />
           <RuntimePill icon={Clock3} label="Polling" value="3s" />
         </CardContent>
       </Card>
 
-      <Card className="rounded-md shadow-none lg:col-span-2">
-        <CardHeader className="border-b border-border p-4">
+      <Card className="wm-panel overflow-hidden rounded-xl shadow-none lg:col-span-2">
+        <CardHeader className="border-b border-border/80 p-4">
           <CardTitle className="text-base">Function telemetry</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {functionStats.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[680px] text-left text-sm">
-                <thead className="border-b border-border bg-secondary/80 text-[11px] uppercase tracking-[0.13em] text-muted-foreground">
+                <thead className="border-b border-border/80 bg-secondary/45 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2.5">Function</th>
                     <th className="px-4 py-2.5 text-right">Accepted</th>
@@ -89,7 +94,7 @@ export function RuntimeSummary({ snapshot }) {
                 </thead>
                 <tbody>
                   {functionStats.map((item) => (
-                    <tr key={item.name} className="border-b border-border last:border-b-0">
+                    <tr key={item.name} className="wm-row border-b border-border/70 last:border-b-0">
                       <td className="px-4 py-3 font-medium">{item.name}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs">{item.accepted ?? 0}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs">{item.completed ?? 0}</td>
@@ -119,7 +124,7 @@ function RuntimeList({ icon: Icon, rows, title }) {
       </div>
       <div className="grid gap-2">
         {rows.map(([label, value]) => (
-          <div key={label} className="flex items-center justify-between gap-3 rounded-md bg-secondary px-3 py-2 text-sm">
+          <div key={label} className="flex items-center justify-between gap-3 rounded-lg bg-secondary/62 px-3 py-2 text-sm">
             <span className="text-muted-foreground">{label}</span>
             <span className="font-mono text-xs font-semibold">{value}</span>
           </div>
@@ -131,7 +136,7 @@ function RuntimeList({ icon: Icon, rows, title }) {
 
 function RuntimePill({ icon: Icon, label, tone = 'neutral', value }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/80 bg-card/35 px-3 py-2">
       <span className="flex items-center gap-2 text-sm text-muted-foreground">
         <Icon className="h-4 w-4" />
         {label}

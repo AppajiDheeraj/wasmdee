@@ -95,6 +95,7 @@ func (a *App) RuntimeSnapshot() (RuntimeSnapshot, error) {
 		Dispatcher:    a.dispatcher.Stats(),
 		FunctionStats: a.dispatcher.FunctionStats(),
 		Preload:       a.preload,
+		ProtoFaaslets: a.engine.ProtoFaaslets(),
 	}, nil
 }
 
@@ -181,6 +182,7 @@ type RuntimeSnapshot struct {
 	Dispatcher    wasmrt.DispatcherStats `json:"dispatcher"`
 	FunctionStats []wasmrt.FunctionStats `json:"function_stats"`
 	Preload       wasmrt.PreloadResult   `json:"preload"`
+	ProtoFaaslets []wasmrt.ProtoFaaslet  `json:"proto_faaslets"`
 }
 
 type InvokeResponse struct {

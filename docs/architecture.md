@@ -2,6 +2,8 @@
 
 `wasmdee` is a single Go binary with a Cobra CLI at `cmd/wasmdee`.
 
+For a code-path-level walkthrough and diagrams, see `docs/tracing.md`.
+
 The current MVP keeps the repository intentionally small:
 
 - `cmd/wasmdee` for the CLI entrypoint and subcommands
@@ -60,7 +62,7 @@ The node now has a first autoscaling and scale-to-zero layer:
 5. `wasmdee bench` records cold, rehydrate, and warm histograms for local Wasm modules and can also benchmark any HTTP endpoint for OpenFaaS/Docker comparison.
 6. The engine exposes an experimental `wasmdee.invoke` host import so a Wasm module can call another deployed function in the same process without HTTP.
 
-This is not a reusable faaslet instance pool yet. The current module contract is WASI command-style, where instantiating the module runs `_start`. Pooling a command instance after it has exited would be unsafe and surprising. The reusable pool should be introduced with a handler ABI that can keep an initialized module alive between calls.
+This is not snapshot/CoW restore yet. The default module contract is still WASI command-style, where instantiating the module runs `_start`. Pooling a command instance after it has exited would be unsafe and surprising. The runtime now records proto-faaslet templates and can pre-instantiate modules that expose the experimental `wasmdee_handle` handler ABI, but normal user traffic still follows the stable fresh WASI instance path until the handler SDK and request ABI are complete.
 
 ```mermaid
 flowchart LR
@@ -107,12 +109,13 @@ This split is desirable because it keeps the security and cleanup model simple w
 | autoscaling workers | implemented | scales local concurrency, not cluster-wide replicas |
 | scale-to-zero | implemented for compiled modules | frees warm compiled modules, but not equivalent to container replica scale-to-zero |
 | benchmark proof | implemented as a CLI harness | results still depend on controlled baseline setup |
-| reusable faaslet pool | planned | needs a handler ABI, because WASI command modules are single-shot |
+| proto-faaslet template store | implemented | records compiled templates, ABI, pool eligibility, and pool size; not a memory snapshot |
+| handler-ABI instance pool | initial | pre-instantiates modules exporting `wasmdee_handle`; not yet the default request path |
 | in-process function-to-function host calls | initial ABI implemented | needs SDK examples, call-chain limits, tracing, and policy hardening |
 | proto-faaslet snapshots | planned | Wazero does not currently expose true page-level CoW restore as a public abstraction |
 | lazy page restore/fork template | research track | may require lower-level runtime memory control, process templates, or a Wasmtime/native experiment |
 
-The honest message for the project is: wasmdee already removes container packaging from the local hot path and proves shared compilation, autoscaled dispatch, scale-to-zero rehydration, and an initial in-process call ABI. The Faasm/Catalyzer/Nightcore/SAND-style claims become valid only after the handler ABI, template pool, hardened direct local calls, snapshot mechanics, and benchmark suite are all merged.
+The honest message for the project is: wasmdee already removes container packaging from the local hot path and proves shared compilation, autoscaled dispatch, scale-to-zero rehydration, an initial proto-faaslet template store, handler-ABI pool scaffolding, and an initial in-process call ABI. The Faasm/Catalyzer/Nightcore/SAND-style snapshot claims become valid only after the handler SDK, hardened direct local calls, snapshot mechanics, and benchmark suite are all merged.
 
 ## Contributor Boundaries
 
@@ -138,11 +141,12 @@ The desktop app owns an embedded local engine and dispatcher for interactive use
 
 ## Next Runtime Milestone
 
-The next meaningful runtime layer is a proto-faaslet-like template path:
+The next meaningful runtime layer is turning the initial proto-faaslet scaffolding into the default handler hot path:
 
-1. Maintain a per-function warm-instance/template policy from telemetry.
-2. Add SDK/toolchain examples for the experimental direct function-to-function host ABI.
-3. Track local call chains so same-host functions can stay in-process with limits and tracing.
-4. Only after the hot path is measured, introduce memory snapshot/reset mechanics.
-5. Add benchmark fixtures against the container/OpenFaaS-style baseline.
-6. Publish raw JSON benchmark artifacts and environment metadata with every performance claim.
+1. Define the `wasmdee_handle` request/response ABI and SDK examples.
+2. Route handler-ABI functions through pooled instances with reset policy.
+3. Maintain a per-function warm-instance/template policy from telemetry.
+4. Track local call chains so same-host functions can stay in-process with limits and tracing.
+5. Only after the hot path is measured, introduce memory snapshot/reset mechanics.
+6. Add benchmark fixtures against the container/OpenFaaS-style baseline.
+7. Publish raw JSON benchmark artifacts and environment metadata with every performance claim.

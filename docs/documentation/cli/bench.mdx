@@ -39,6 +39,7 @@ Measures function invocation latency with cold, rehydrate, and warm phases for l
 | `--scale-down-after` | `5s` | Idle worker retirement for benchmark |
 | `--scale-to-zero-after` | `0` | Module eviction (0 = disabled) |
 | `--json` | `false` | Machine-readable JSON output |
+| `--report` | | Write a `.json` or `.html` report file |
 
 ## Examples
 
@@ -46,28 +47,19 @@ Measures function invocation latency with cold, rehydrate, and warm phases for l
 # Benchmark a local Wasm module
 wasmdee bench ./hello.wasm --iterations 1000 --warmup 100 --concurrency 8
 
-# JSON output for CI/scripting
-wasmdee bench ./hello.wasm --iterations 500 --json > results.json
+# JSON and HTML reports
+wasmdee bench ./hello.wasm --iterations 500 --json --report reports/wasmdee-local.html
 
 # Compare wasmdee HTTP gateway vs OpenFaaS
-wasmdee bench http://127.0.0.1:8080/invoke/hello --label wasmdee-http
-wasmdee bench http://127.0.0.1:8081/function/hello --label openfaas
+wasmdee bench http://127.0.0.1:8080/invoke/hello --label wasmdee-http --report reports/wasmdee-http.html
+wasmdee bench http://127.0.0.1:8081/function/hello --label openfaas --report reports/openfaas.html
 ```
 
 ## Output (Text Mode)
 
-```
-benchmark: wasmdee-local
-target: ./hello.wasm
-iterations=1000 warmup=100 concurrency=8
-
-cold      count=5 errors=0 avg=8.234ms p50=7.891ms p95=10.123ms p99=10.123ms min=6.543ms max=10.456ms throughput=120.3/s
-rehydrate count=5 errors=0 avg=1.456ms p50=1.234ms p95=2.345ms p99=2.345ms min=0.987ms max=2.567ms throughput=680.2/s
-warm      count=1000 errors=0 avg=0.089ms p50=0.076ms p95=0.156ms p99=0.234ms min=0.045ms max=0.567ms throughput=89123.4/s
-
-engine: compiled=1 compile_requests=2 hits=1 evictions=5 invocations=1105 host_calls=0 host_call_failures=0
-dispatcher: workers=8 min=1 max=32 accepted=1105 rejected=0 scale_ups=7 scale_downs=0
-```
+Text mode prints cold, rehydrate, and warm histograms for local Wasm targets,
+plus engine and dispatcher counters. HTTP targets print warm round-trip latency
+only. Use `--report` when presenting results publicly.
 
 ## Measurement Phases
 
@@ -85,4 +77,6 @@ Uses the long-lived engine with the compiled module already in memory. Measures 
 - Cold and rehydrate phases are only measured for local Wasm targets
 - HTTP mode is intentionally simple: it does a POST and measures round-trip time
 - Use `--json` output for automated comparison scripts
+- Do not mix imported online Docker/OpenFaaS data with local wasmdee results as
+  proof unless the graph clearly marks imported data as an external reference
 - See [Benchmarking Guide](/guides/benchmarking) before publishing performance claims

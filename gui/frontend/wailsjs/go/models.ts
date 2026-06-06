@@ -1,12 +1,12 @@
 export namespace main {
-	
+
 	export class InvokeResponse {
 	    name: string;
 	    stdout: string;
 	    stderr: string;
 	    exit_code: number;
 	    latency_ms: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new InvokeResponse(source);
 	    }
@@ -29,6 +29,7 @@ export namespace main {
 	    dispatcher: runtime.DispatcherStats;
 	    function_stats: runtime.FunctionStats[];
 	    preload: runtime.PreloadResult;
+	    proto_faaslets: runtime.ProtoFaaslet[];
 	
 	    static createFrom(source: any = {}) {
 	        return new RuntimeSnapshot(source);
@@ -44,6 +45,7 @@ export namespace main {
 	        this.dispatcher = this.convertValues(source["dispatcher"], runtime.DispatcherStats);
 	        this.function_stats = this.convertValues(source["function_stats"], runtime.FunctionStats);
 	        this.preload = this.convertValues(source["preload"], runtime.PreloadResult);
+	        this.proto_faaslets = this.convertValues(source["proto_faaslets"], runtime.ProtoFaaslet);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -111,6 +113,9 @@ export namespace runtime {
 	    evictions: number;
 	    host_calls: number;
 	    host_call_failures: number;
+	    proto_faaslets: number;
+	    instance_pools: number;
+	    warm_instances: number;
 	    scale_to_zero_after_ms?: number;
 	
 	    static createFrom(source: any = {}) {
@@ -126,7 +131,38 @@ export namespace runtime {
 	        this.evictions = source["evictions"];
 	        this.host_calls = source["host_calls"];
 	        this.host_call_failures = source["host_call_failures"];
+	        this.proto_faaslets = source["proto_faaslets"];
+	        this.instance_pools = source["instance_pools"];
+	        this.warm_instances = source["warm_instances"];
 	        this.scale_to_zero_after_ms = source["scale_to_zero_after_ms"];
+	    }
+	}
+	export class ProtoFaaslet {
+	    function_name: string;
+	    wasm_path: string;
+	    abi: string;
+	    state: string;
+	    pool_eligible: boolean;
+	    pool_size: number;
+	    unsupported_reason?: string;
+	    created_at: number;
+	    last_used_at: number;
+
+	    static createFrom(source: any = {}) {
+	        return new ProtoFaaslet(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.function_name = source["function_name"];
+	        this.wasm_path = source["wasm_path"];
+	        this.abi = source["abi"];
+	        this.state = source["state"];
+	        this.pool_eligible = source["pool_eligible"];
+	        this.pool_size = source["pool_size"];
+	        this.unsupported_reason = source["unsupported_reason"];
+	        this.created_at = source["created_at"];
+	        this.last_used_at = source["last_used_at"];
 	    }
 	}
 	export class FunctionStats {
@@ -220,6 +256,11 @@ export namespace state {
 	    name: string;
 	    wasm_path: string;
 	    capabilities: string;
+	    route?: string;
+	    public_url?: string;
+	    domain?: string;
+	    app_name?: string;
+	    deployment_name?: string;
 	    created_at: number;
 	
 	    static createFrom(source: any = {}) {
@@ -231,9 +272,13 @@ export namespace state {
 	        this.name = source["name"];
 	        this.wasm_path = source["wasm_path"];
 	        this.capabilities = source["capabilities"];
+	        this.route = source["route"];
+	        this.public_url = source["public_url"];
+	        this.domain = source["domain"];
+	        this.app_name = source["app_name"];
+	        this.deployment_name = source["deployment_name"];
 	        this.created_at = source["created_at"];
 	    }
 	}
 
 }
-

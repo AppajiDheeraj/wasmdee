@@ -80,6 +80,7 @@ var serveCmd = &cobra.Command{
 		}))
 		mux.HandleFunc("GET /functions", listFunctionsHandler)
 		mux.HandleFunc("POST /invoke/", invokeHandler(dispatcher))
+		mux.HandleFunc("POST /", routeInvokeHandler(dispatcher))
 
 		server := &http.Server{
 			Addr:              serveAddr,
@@ -123,7 +124,19 @@ func runtimeHandler(engine *wasmrt.Engine, dispatcher *wasmrt.Dispatcher, preloa
 			"dispatcher":     dispatcher.Stats(),
 			"function_stats": dispatcher.FunctionStats(),
 			"preload":        preload(),
+			"proto_faaslets": engine.ProtoFaaslets(),
 		})
+	}
+}
+
+func routeInvokeHandler(dispatcher *wasmrt.Dispatcher) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fn, err := state.GetFunctionByRoute(r.URL.Path)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err)
+			return
+		}
+		invokeFunction(w, r, dispatcher, fn)
 	}
 }
 
@@ -136,48 +149,53 @@ func invokeHandler(dispatcher *wasmrt.Dispatcher) http.HandlerFunc {
 			return
 		}
 
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
-		if err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("read request body: %w", err))
-			return
-		}
-		defer r.Body.Close()
-
 		fn, err := state.GetFunction(name)
 		if err != nil {
 			writeError(w, http.StatusNotFound, err)
 			return
 		}
 
-		result, err := dispatcher.Submit(r.Context(), wasmrt.Invocation{
-			Function: fn,
-			Stdin:    body,
-			Args:     r.URL.Query()["arg"],
-		})
-		if err != nil {
-			switch {
-			case errors.Is(err, wasmrt.ErrQueueFull):
-				writeError(w, http.StatusTooManyRequests, err)
-			case errors.Is(err, wasmrt.ErrDispatcherClosed):
-				writeError(w, http.StatusServiceUnavailable, err)
-			default:
-				writeError(w, http.StatusInternalServerError, err)
-			}
-			return
-		}
-
-		status := http.StatusOK
-		if result.ExitCode != 0 {
-			status = http.StatusBadGateway
-		}
-		writeJSON(w, status, map[string]any{
-			"name":       fn.Name,
-			"stdout":     result.Stdout,
-			"stderr":     result.Stderr,
-			"exit_code":  result.ExitCode,
-			"latency_ms": float64(result.Latency.Microseconds()) / 1000.0,
-		})
+		invokeFunction(w, r, dispatcher, fn)
 	}
+}
+
+func invokeFunction(w http.ResponseWriter, r *http.Request, dispatcher *wasmrt.Dispatcher, fn state.Function) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("read request body: %w", err))
+		return
+	}
+	defer r.Body.Close()
+
+	result, err := dispatcher.Submit(r.Context(), wasmrt.Invocation{
+		Function: fn,
+		Stdin:    body,
+		Args:     r.URL.Query()["arg"],
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, wasmrt.ErrQueueFull):
+			writeError(w, http.StatusTooManyRequests, err)
+		case errors.Is(err, wasmrt.ErrDispatcherClosed):
+			writeError(w, http.StatusServiceUnavailable, err)
+		default:
+			writeError(w, http.StatusInternalServerError, err)
+		}
+		return
+	}
+
+	status := http.StatusOK
+	if result.ExitCode != 0 {
+		status = http.StatusBadGateway
+	}
+	writeJSON(w, status, map[string]any{
+		"name":       fn.Name,
+		"route":      fn.Route,
+		"stdout":     result.Stdout,
+		"stderr":     result.Stderr,
+		"exit_code":  result.ExitCode,
+		"latency_ms": float64(result.Latency.Microseconds()) / 1000.0,
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

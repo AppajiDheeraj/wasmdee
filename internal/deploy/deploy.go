@@ -17,10 +17,16 @@ import (
 
 // Options configures a local Wasm function deployment.
 type Options struct {
-	SourcePath string
-	Name       string
-	ModulesDir string
-	CacheDir   string
+	SourcePath     string
+	Name           string
+	ModulesDir     string
+	CacheDir       string
+	Route          string
+	Domain         string
+	AppName        string
+	DeploymentName string
+	Controls       FunctionControls
+	GenerateURL    bool
 }
 
 // Result describes a deployed function and its stored module.
@@ -87,15 +93,48 @@ func Function(ctx context.Context, opts Options) (Result, error) {
 	if name == "" {
 		name = strings.TrimSuffix(filepath.Base(sourcePath), filepath.Ext(sourcePath))
 	}
-	if name == "" {
-		return Result{}, fmt.Errorf("function name cannot be empty")
+	if err := ValidateName("function name", name); err != nil {
+		return Result{}, err
+	}
+	appName := opts.AppName
+	if appName == "" {
+		appName = "local"
+	}
+	if err := ValidateName("app name", appName); err != nil {
+		return Result{}, err
+	}
+	route := opts.Route
+	if route == "" {
+		route = "/" + name
+	}
+	if err := ValidateRoute(route); err != nil {
+		return Result{}, err
+	}
+	if err := ValidateDomain(opts.Domain); err != nil {
+		return Result{}, err
+	}
+	capabilities, err := encodeCapabilities(opts.Controls)
+	if err != nil {
+		return Result{}, fmt.Errorf("encode deployment controls: %w", err)
+	}
+	publicURL := ""
+	if opts.GenerateURL || opts.Domain != "" {
+		publicURL, err = generatedURL(appName, name, route, opts.Domain)
+		if err != nil {
+			return Result{}, err
+		}
 	}
 
 	fn := state.Function{
-		Name:         name,
-		WasmPath:     storedPath,
-		Capabilities: "{}",
-		CreatedAt:    time.Now().Unix(),
+		Name:           name,
+		WasmPath:       storedPath,
+		Capabilities:   capabilities,
+		Route:          route,
+		PublicURL:      publicURL,
+		Domain:         opts.Domain,
+		AppName:        appName,
+		DeploymentName: opts.DeploymentName,
+		CreatedAt:      time.Now().Unix(),
 	}
 	if err := state.SaveFunction(fn); err != nil {
 		return Result{}, err

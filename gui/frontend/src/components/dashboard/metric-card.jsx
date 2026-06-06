@@ -12,10 +12,12 @@ export function MetricCard({ metric }) {
           : 'text-foreground';
 
   return (
-    <Card className="rounded-md shadow-none">
+    <Card className="wm-panel overflow-hidden rounded-xl shadow-none">
       <CardHeader className="flex flex-row items-center justify-between gap-3 p-4 pb-2">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{metric.title}</span>
-        <Icon className="h-4 w-4 text-muted-foreground" />
+        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{metric.title}</span>
+        <span className="flex size-7 items-center justify-center rounded-full bg-secondary/80 text-muted-foreground">
+          <Icon className="h-3.5 w-3.5" />
+        </span>
       </CardHeader>
       <CardContent className="p-4 pt-0">
         <div className={`text-2xl font-semibold tracking-tight ${toneClass}`}>{metric.value}</div>

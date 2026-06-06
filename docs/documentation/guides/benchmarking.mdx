@@ -35,7 +35,8 @@ wasmdee bench ./hello.wasm \
   --iterations 1000 \
   --warmup 100 \
   --concurrency 8 \
-  --cold-runs 10
+  --cold-runs 10 \
+  --report reports/wasmdee-local.html
 ```
 
 ### HTTP Endpoint (wasmdee gateway)
@@ -45,7 +46,8 @@ wasmdee serve &
 wasmdee bench http://127.0.0.1:8080/invoke/hello \
   --label wasmdee-http \
   --iterations 1000 \
-  --concurrency 16
+  --concurrency 16 \
+  --report reports/wasmdee-http.html
 ```
 
 ### HTTP Endpoint (OpenFaaS or Docker comparison)
@@ -54,18 +56,17 @@ wasmdee bench http://127.0.0.1:8080/invoke/hello \
 wasmdee bench http://127.0.0.1:8081/function/hello \
   --label openfaas \
   --iterations 1000 \
-  --concurrency 16
+  --concurrency 16 \
+  --report reports/openfaas.html
 ```
 
 ---
 
 ## Interpreting Results
 
-```
-cold      count=10 errors=0 avg=8.234ms p50=7.891ms p95=10.123ms
-rehydrate count=10 errors=0 avg=1.456ms p50=1.234ms p95=2.345ms
-warm      count=1000 errors=0 avg=0.089ms p50=0.076ms p95=0.156ms
-```
+The CLI prints one histogram per measured phase and can also write a shareable
+HTML report. Treat every number as machine-specific unless the raw JSON, command
+line, function source, and host profile are published beside it.
 
 | Phase | What It Tells You |
 |---|---|
@@ -99,6 +100,11 @@ For fair comparisons against container-based platforms:
   </Step>
 </Steps>
 
+Online Docker/OpenFaaS benchmark numbers can be cited as background research,
+but they should not be graphed as proof against wasmdee results from your laptop.
+If imported data is shown, label it as `external reference` and keep it visually
+separate from `measured on this machine` results.
+
 ---
 
 ## JSON Output for CI
@@ -109,7 +115,8 @@ wasmdee bench http://127.0.0.1:8080/invoke/hello --json --label wasmdee-http > r
 wasmdee bench http://127.0.0.1:8081/function/hello --json --label openfaas > results/openfaas.json
 ```
 
-The JSON output includes all histogram data, engine stats, and dispatcher stats for automated analysis.
+The JSON output includes histogram data, engine stats, dispatcher stats, system
+metadata, and memory data for local Wasm runs.
 
 ---
 
@@ -125,3 +132,4 @@ Do not publish benchmark results that compare platforms without following these 
 4. Cold-start comparisons must specify whether the container platform was pre-pulled
 5. Throughput claims must state the concurrency level
 6. Results from a single run are anecdotal — use multiple iterations
+7. Imported online results must be labeled as references, not same-machine proof

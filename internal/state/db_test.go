@@ -59,3 +59,32 @@ func TestSaveFunctionReplacesExistingRecord(t *testing.T) {
 		t.Fatalf("GetFunction() = %+v, want %+v", got, second)
 	}
 }
+
+func TestGetFunctionByRoute(t *testing.T) {
+	CloseDB()
+	Configure(filepath.Join(t.TempDir(), "wasmdee.db"))
+	t.Cleanup(CloseDB)
+
+	fn := Function{
+		Name:           "hello",
+		WasmPath:       "/tmp/hello.wasm",
+		Capabilities:   "{}",
+		Route:          "/hello",
+		PublicURL:      "https://demo.example.com/hello",
+		Domain:         "demo.example.com",
+		AppName:        "demo",
+		DeploymentName: "demo",
+		CreatedAt:      123,
+	}
+	if err := SaveFunction(fn); err != nil {
+		t.Fatalf("SaveFunction() error = %v", err)
+	}
+
+	got, err := GetFunctionByRoute("/hello")
+	if err != nil {
+		t.Fatalf("GetFunctionByRoute() error = %v", err)
+	}
+	if got != fn {
+		t.Fatalf("GetFunctionByRoute() = %+v, want %+v", got, fn)
+	}
+}

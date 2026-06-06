@@ -60,15 +60,24 @@ func initDB() error {
 		return fmt.Errorf("failed to create tables: %w", err)
 	}
 
+	if err := ensureFunctionColumns(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 // Function is the local registry record for a deployed Wasm function.
 type Function struct {
-	Name         string `json:"name"`
-	WasmPath     string `json:"wasm_path"`
-	Capabilities string `json:"capabilities"`
-	CreatedAt    int64  `json:"created_at"`
+	Name           string `json:"name"`
+	WasmPath       string `json:"wasm_path"`
+	Capabilities   string `json:"capabilities"`
+	Route          string `json:"route,omitempty"`
+	PublicURL      string `json:"public_url,omitempty"`
+	Domain         string `json:"domain,omitempty"`
+	AppName        string `json:"app_name,omitempty"`
+	DeploymentName string `json:"deployment_name,omitempty"`
+	CreatedAt      int64  `json:"created_at"`
 }
 
 // SaveFunction inserts or replaces a function registry entry.
@@ -79,13 +88,20 @@ func SaveFunction(fn Function) error {
 
 	return withTx(func(tx *sql.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO functions (name, wasm_path, capabilities, created_at)
-			VALUES (?, ?, ?, ?)
+			INSERT INTO functions (
+				name, wasm_path, capabilities, route, public_url, domain, app_name, deployment_name, created_at
+			)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(name) DO UPDATE SET
 				wasm_path = excluded.wasm_path,
 				capabilities = excluded.capabilities,
+				route = excluded.route,
+				public_url = excluded.public_url,
+				domain = excluded.domain,
+				app_name = excluded.app_name,
+				deployment_name = excluded.deployment_name,
 				created_at = excluded.created_at
-		`, fn.Name, fn.WasmPath, fn.Capabilities, fn.CreatedAt)
+		`, fn.Name, fn.WasmPath, fn.Capabilities, fn.Route, fn.PublicURL, fn.Domain, fn.AppName, fn.DeploymentName, fn.CreatedAt)
 		if err != nil {
 			return fmt.Errorf("failed to save function %q: %w", fn.Name, err)
 		}
@@ -102,15 +118,37 @@ func GetFunction(name string) (Function, error) {
 
 	var fn Function
 	err = d.QueryRow(`
-		SELECT name, wasm_path, capabilities, created_at
+		SELECT name, wasm_path, capabilities, route, public_url, domain, app_name, deployment_name, created_at
 		FROM functions
 		WHERE name = ?
-	`, name).Scan(&fn.Name, &fn.WasmPath, &fn.Capabilities, &fn.CreatedAt)
+	`, name).Scan(&fn.Name, &fn.WasmPath, &fn.Capabilities, &fn.Route, &fn.PublicURL, &fn.Domain, &fn.AppName, &fn.DeploymentName, &fn.CreatedAt)
 	if err == sql.ErrNoRows {
 		return Function{}, fmt.Errorf("function %q is not deployed", name)
 	}
 	if err != nil {
 		return Function{}, fmt.Errorf("failed to read function %q: %w", name, err)
+	}
+	return fn, nil
+}
+
+// GetFunctionByRoute returns the function whose deployment route matches path.
+func GetFunctionByRoute(path string) (Function, error) {
+	d, err := GetDB()
+	if err != nil {
+		return Function{}, err
+	}
+
+	var fn Function
+	err = d.QueryRow(`
+		SELECT name, wasm_path, capabilities, route, public_url, domain, app_name, deployment_name, created_at
+		FROM functions
+		WHERE route = ?
+	`, path).Scan(&fn.Name, &fn.WasmPath, &fn.Capabilities, &fn.Route, &fn.PublicURL, &fn.Domain, &fn.AppName, &fn.DeploymentName, &fn.CreatedAt)
+	if err == sql.ErrNoRows {
+		return Function{}, fmt.Errorf("no function is deployed at route %q", path)
+	}
+	if err != nil {
+		return Function{}, fmt.Errorf("failed to read route %q: %w", path, err)
 	}
 	return fn, nil
 }
@@ -123,7 +161,7 @@ func ListFunctions() ([]Function, error) {
 	}
 
 	rows, err := d.Query(`
-		SELECT name, wasm_path, capabilities, created_at
+		SELECT name, wasm_path, capabilities, route, public_url, domain, app_name, deployment_name, created_at
 		FROM functions
 		ORDER BY name
 	`)
@@ -135,7 +173,7 @@ func ListFunctions() ([]Function, error) {
 	var functions []Function
 	for rows.Next() {
 		var fn Function
-		if err := rows.Scan(&fn.Name, &fn.WasmPath, &fn.Capabilities, &fn.CreatedAt); err != nil {
+		if err := rows.Scan(&fn.Name, &fn.WasmPath, &fn.Capabilities, &fn.Route, &fn.PublicURL, &fn.Domain, &fn.AppName, &fn.DeploymentName, &fn.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan function: %w", err)
 		}
 		functions = append(functions, fn)
@@ -144,6 +182,47 @@ func ListFunctions() ([]Function, error) {
 		return nil, fmt.Errorf("failed to iterate functions: %w", err)
 	}
 	return functions, nil
+}
+
+func ensureFunctionColumns() error {
+	d := db
+	rows, err := d.Query(`PRAGMA table_info(functions)`)
+	if err != nil {
+		return fmt.Errorf("inspect functions schema: %w", err)
+	}
+	defer rows.Close()
+
+	existing := make(map[string]bool)
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull, pk int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return fmt.Errorf("scan functions schema: %w", err)
+		}
+		existing[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate functions schema: %w", err)
+	}
+
+	columns := map[string]string{
+		"route":           "TEXT NOT NULL DEFAULT ''",
+		"public_url":      "TEXT NOT NULL DEFAULT ''",
+		"domain":          "TEXT NOT NULL DEFAULT ''",
+		"app_name":        "TEXT NOT NULL DEFAULT ''",
+		"deployment_name": "TEXT NOT NULL DEFAULT ''",
+	}
+	for name, definition := range columns {
+		if existing[name] {
+			continue
+		}
+		if _, err := d.Exec(fmt.Sprintf("ALTER TABLE functions ADD COLUMN %s %s", name, definition)); err != nil {
+			return fmt.Errorf("add functions.%s column: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // CloseDB closes the database to release file handles on shutdown.
