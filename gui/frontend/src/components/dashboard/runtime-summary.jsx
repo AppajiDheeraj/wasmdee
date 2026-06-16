@@ -17,8 +17,12 @@ export function RuntimeSummary({ snapshot }) {
     ['Cache hits', engine.compile_hits ?? 0],
     ['Evictions', engine.evictions ?? 0],
     ['Host calls', engine.host_calls ?? 0],
+    ['Handler invocations', engine.handler_invocations ?? 0],
     ['Proto templates', engine.proto_faaslets ?? protoFaaslets.length],
-    ['Warm instances', engine.warm_instances ?? 0],
+    ['Instances available', engine.available_instances ?? 0],
+    ['Instances in use', engine.instances_in_use ?? 0],
+    ['Pool waits', engine.pool_waits ?? 0],
+    ['Pool discards', engine.pool_discards ?? 0],
   ];
 
   const dispatcherRows = [
@@ -67,6 +71,7 @@ export function RuntimeSummary({ snapshot }) {
         <CardContent className="grid gap-3 p-4">
           <RuntimePill icon={Boxes} label="Requested" value={preload.requested ?? 0} />
           <RuntimePill icon={Zap} label="Compiled" value={preload.compiled ?? 0} />
+          <RuntimePill icon={Clock3} label="Skipped by policy" value={preload.skipped ?? 0} />
           <RuntimePill icon={Boxes} label="Templates" value={engine.proto_faaslets ?? protoFaaslets.length} />
           <RuntimePill icon={Zap} label="Pooled instances" value={engine.warm_instances ?? 0} />
           <RuntimePill icon={Activity} label="Failures" value={preload.failed?.length ?? 0} tone={preload.failed?.length ? 'bad' : 'ok'} />

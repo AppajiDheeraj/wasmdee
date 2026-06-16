@@ -54,13 +54,18 @@ All gateway tuning is done through CLI flags on `wasmdee serve`:
 |---|---|---|
 | `--queue-size` | `1024` | Max pending invocations |
 | `--invoke-timeout` | `10s` | Per-invocation time limit |
+| `--request-body-limit` | `8388608` | Maximum HTTP request bytes |
+| `--shutdown-timeout` | `10s` | Graceful shutdown window |
 
 ### Warm Pool
 
 | Flag | Default | Description |
 |---|---|---|
-| `--preload` | `true` | Compile all functions at startup |
+| `--preload` | `true` | Compile functions whose policy allows preload |
 | `--scale-to-zero-after` | `0` (disabled) | Evict idle compiled modules |
+| `--handler-pool-size` | `1` | Reusable instances per handler function |
+| `--handler-request-limit` | `8388608` | Maximum handler request bytes |
+| `--handler-response-limit` | `8388608` | Maximum handler response bytes |
 
 ### Network
 
@@ -82,7 +87,7 @@ wasmdee serve \
   --scale-to-zero-after 30s
 ```
 
-### Production (high throughput)
+### Higher-throughput single node
 
 ```bash
 wasmdee serve \

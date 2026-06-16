@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -32,7 +33,6 @@ type ManifestFunction struct {
 // FunctionControls captures deployment policy knobs kept with the function.
 type FunctionControls struct {
 	Preload          *bool  `json:"preload,omitempty" yaml:"preload"`
-	ZeroCopy         *bool  `json:"zero_copy,omitempty" yaml:"zero_copy"`
 	MaxConcurrency   int    `json:"max_concurrency,omitempty" yaml:"max_concurrency"`
 	ScaleToZeroAfter string `json:"scale_to_zero_after,omitempty" yaml:"scale_to_zero_after"`
 }
@@ -102,7 +102,9 @@ func LoadManifest(path string) (Manifest, string, error) {
 	}
 
 	var manifest Manifest
-	if err := yaml.Unmarshal(data, &manifest); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&manifest); err != nil {
 		return Manifest{}, "", fmt.Errorf("parse manifest YAML: %w", err)
 	}
 	if manifest.Version == 0 {
@@ -156,6 +158,9 @@ func LoadManifest(path string) (Manifest, string, error) {
 			if _, err := time.ParseDuration(fn.Controls.ScaleToZeroAfter); err != nil {
 				return Manifest{}, "", fmt.Errorf("functions[%d] %q scale_to_zero_after: %w", index, fn.Name, err)
 			}
+		}
+		if fn.Controls.MaxConcurrency < 0 {
+			return Manifest{}, "", fmt.Errorf("functions[%d] %q max_concurrency cannot be negative", index, fn.Name)
 		}
 	}
 

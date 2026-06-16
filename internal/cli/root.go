@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/dheeraj/wasmdee/internal/config"
 	"github.com/dheeraj/wasmdee/internal/state"
@@ -21,7 +24,7 @@ var verbose bool
 var rootCmd = &cobra.Command{
 	Use:     "wasmdee",
 	Short:   "A Wasm-native serverless runtime",
-	Long:    `wasmdee is a Wasm-native serverless runtime running functions at microsecond scale.`,
+	Long:    `wasmdee is a local-first serverless runtime for deploying and invoking WebAssembly functions.`,
 	Version: Version,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		return initializeGlobalState()
@@ -40,7 +43,9 @@ func init() {
 
 // Execute runs the root command and exits on error.
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

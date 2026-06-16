@@ -28,7 +28,7 @@ wasmdee uses two compilation cache layers:
 
 ### In-Memory Warm Pool
 
-Compiled modules are held in process memory. Instantiating a compiled module is fast (microseconds) because there's no compilation step — just memory allocation for the new instance.
+Compiled modules are held in process memory. A warm invocation skips module compilation, but still creates fresh execution state for the WASI command. Measure the resulting latency with `wasmdee bench` instead of treating a particular threshold as guaranteed.
 
 ### File-Backed Compilation Cache
 
@@ -44,11 +44,12 @@ Wazero's built-in compilation cache stores compiled artifacts on disk. When a mo
 
 ## Preloading
 
-By default, `wasmdee serve` preloads all deployed functions at startup:
+By default, `wasmdee serve` considers deployed functions for startup preload:
 
 1. Queries all registered functions from SQLite
-2. Compiles each `.wasm` module into the warm pool
-3. Reports success/failure counts at startup
+2. Skips functions whose deployment policy sets `preload: false`
+3. Compiles remaining `.wasm` modules into the warm pool
+4. Reports compiled, skipped, and failed counts at startup
 
 A failed preload does not prevent the gateway from starting. Failed modules are reported in stdout and available via `GET /runtime`.
 
@@ -75,7 +76,7 @@ The engine exposes a `wasmdee.invoke` host import, allowing a Wasm module to cal
 module A → wasmdee.invoke("module-b", payload) → engine → module B → result back to A
 ```
 
-This is an initial ABI that needs SDK examples, call-chain limits, and tracing before production use.
+This initial ABI has call-cycle and depth limits. It still needs distributed tracing, authorization policy, and language SDKs before production use.
 
 ---
 

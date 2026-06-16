@@ -108,23 +108,27 @@ stdout.write("Echo: " + input);
 
 Each function can declare system access in a `wasmdee.toml` alongside the source:
 
-```toml
-[function]
-name = "my-function"
+The current guest surface does not provide networking, KV, or preopened
+filesystem directories. The YAML `controls` block configures preload,
+concurrency, and scale-to-zero behavior; it is not a capability grant system.
 
-[capabilities]
-network = false
-kv = false
-fs = []
+## Reusable Handler ABI
+
+Functions that need the pooled fast path must export:
+
+```text
+memory
+wasmdee_alloc(i32) -> i32
+wasmdee_handle(i32, i32) -> i64
+wasmdee_reset() -> i32
 ```
 
-| Capability | Values | Description |
-|---|---|---|
-| `network` | `true` / `false` | Allow outbound network calls |
-| `kv` | `true` / `false` | Access the key-value store (planned) |
-| `fs` | Array of paths | Filesystem directories the function can access |
+The handler receives request bytes in linear memory and returns a packed
+response pointer and length. A zero reset result declares the borrowed instance
+safe for reuse. Failed resets, traps, timeouts, and invalid memory ranges cause
+the runtime to discard the instance.
 
-Everything not listed is **denied by default**.
+See the runnable `examples/handler` fixture for the complete lifecycle.
 
 ---
 
@@ -143,8 +147,8 @@ Everything not listed is **denied by default**.
     Return exit code 0 for success. Non-zero exit codes are reported as errors to the caller. Write diagnostic information to stderr.
   </Accordion>
 
-  <Accordion title="Avoid global mutable state">
-    Each invocation gets a fresh module instance with zero'd memory. There's no state carried between invocations — this is by design for isolation.
+  <Accordion title="Reset pooled mutable state">
+    WASI command invocations receive fresh instances. Handler modules are reused, so `wasmdee_reset` must restore allocator cursors, buffers, globals, and request-local state before returning zero.
   </Accordion>
 
   <Accordion title="Test locally before deploying">
@@ -156,12 +160,9 @@ Everything not listed is **denied by default**.
 
 ## Module Size Guidelines
 
-| Size | Impact |
-|---|---|
-| < 100 KB | Excellent — near-instant cold compile |
-| 100 KB – 1 MB | Good — cold compile in low milliseconds |
-| 1 – 10 MB | Acceptable — cold compile may be noticeable |
-| > 10 MB | Avoid — consider splitting or optimizing |
+Smaller modules generally reduce storage, compilation work, and transfer cost,
+but language toolchains and imports matter as much as file size. Measure cold,
+rehydrate, and warm behavior with `wasmdee bench` before setting a size budget.
 
 Use `wasm-opt` from [Binaryen](https://github.com/WebAssembly/binaryen) to shrink modules:
 

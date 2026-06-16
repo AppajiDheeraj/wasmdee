@@ -10,6 +10,7 @@ import { InvokeFunction } from '@/components/dashboard/invoke-function';
 import { RuntimeSummary } from '@/components/dashboard/runtime-summary';
 import { Button } from '@/components/ui/button';
 import { getRuntimeSnapshot, invokeRuntimeFunction, selectAndDeployFunction } from '@/lib/wasmdee-runtime';
+import { getFunctionRuntime, getSuccessMetric } from '@/lib/runtime-view-model';
 
 export function DashboardPage({ user, isSubmitting, onSignOut, theme, onToggleTheme }) {
   const [activeView, setActiveView] = useState('dashboard');
@@ -310,14 +311,18 @@ function toFunctionRows(snapshot) {
   }
 
   const statsByName = new Map((snapshot.function_stats || []).map((item) => [item.name, item]));
+  const protoByName = new Map((snapshot.proto_faaslets || []).map((item) => [item.function_name, item]));
   return deployed.map((fn) => {
     const stats = statsByName.get(fn.name) || {};
+    const proto = protoByName.get(fn.name);
+    const runtime = getFunctionRuntime(proto);
     const failed = stats.failed || 0;
     const completed = stats.completed || 0;
     const inFlight = stats.in_flight || 0;
     return {
       name: fn.name,
-      runtime: 'WASI command',
+      runtime: runtime.label,
+      abi: runtime.abi,
       path: fn.wasm_path,
       route: fn.route || `/${fn.name}`,
       publicURL: fn.public_url || '',
@@ -342,7 +347,7 @@ function toRuntimeMetrics(snapshot) {
     functionStats.length === 0
       ? 0
       : functionStats.reduce((sum, item) => sum + (item.avg_latency_ms || 0), 0) / functionStats.length;
-  const successRate = completed === 0 ? 100 : ((completed - failed) / completed) * 100;
+  const success = getSuccessMetric(completed, failed, dispatcher.rejected);
 
   return [
     {
@@ -361,10 +366,10 @@ function toRuntimeMetrics(snapshot) {
     },
     {
       title: 'Success',
-      value: `${successRate.toFixed(1)}%`,
-      detail: `${dispatcher.rejected || 0} rejected`,
+      value: success.value,
+      detail: success.detail,
       icon: Gauge,
-      tone: successRate < 100 ? 'warn' : 'good',
+      tone: success.tone,
     },
     {
       title: 'Latency',

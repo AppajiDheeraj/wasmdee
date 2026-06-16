@@ -14,7 +14,7 @@ export async function getRuntimeSnapshot() {
       engine: { compiled_modules: 0, compile_requests: 0, compile_hits: 0, invocations: 0 },
       dispatcher: { workers: 0, queue_size: 0, queued: 0, accepted: 0, rejected: 0, completed: 0 },
       function_stats: [],
-      preload: { requested: 0, compiled: 0 },
+      preload: { requested: 0, compiled: 0, skipped: 0 },
       proto_faaslets: [],
     };
   }

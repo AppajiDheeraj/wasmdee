@@ -1,19 +1,51 @@
-# README
+# wasmdee Desktop Console
 
-## About
+The desktop console is a Wails application over the same Go deployment,
+registry, dispatcher, and runtime packages used by the CLI.
 
-This is the official Wails React template.
+It supports:
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+- selecting and deploying a local `.wasm` module;
+- listing registered functions and routes;
+- invoking WASI command and pooled handler functions;
+- showing stdout, stderr, exit status, and measured latency;
+- inspecting dispatcher, preload, proto-template, and instance-pool telemetry.
 
-## Live Development
+## Development
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+Install frontend dependencies once:
 
-## Building
+```bash
+cd gui/frontend
+npm ci
+```
 
-To build a redistributable, production mode package, use `wails build`.
+Run the native application with Wails:
+
+```bash
+cd gui
+wails dev
+```
+
+The browser-only frontend preview is useful for layout work:
+
+```bash
+cd gui/frontend
+npm run dev
+```
+
+Browser preview does not have the Wails Go bridge, so deployment and invocation
+are intentionally unavailable there.
+
+## Verification
+
+```bash
+cd gui/frontend
+npm run build
+
+cd ..
+go test ./...
+```
+
+Supabase authentication is optional. Without frontend environment credentials,
+the application opens directly as a local runtime console.

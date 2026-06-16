@@ -32,7 +32,7 @@ HTTP invocation goes through a bounded dispatcher:
 4. A worker executes the function through the shared engine.
 5. If the queue is full, the gateway returns `429 Too Many Requests`.
 
-This is the production bridge toward proto-faaslets: compiled code and host runtime state are shared now; memory snapshotting and clone/reset semantics come next.
+This is the current implementation bridge toward proto-faaslets: compiled code and host runtime state are shared now; memory snapshotting and clone/reset semantics come next.
 
 ## Phase 3 runtime path
 
@@ -62,7 +62,7 @@ The node now has a first autoscaling and scale-to-zero layer:
 5. `wasmdee bench` records cold, rehydrate, and warm histograms for local Wasm modules and can also benchmark any HTTP endpoint for OpenFaaS/Docker comparison.
 6. The engine exposes an experimental `wasmdee.invoke` host import so a Wasm module can call another deployed function in the same process without HTTP.
 
-This is not snapshot/CoW restore yet. The default module contract is still WASI command-style, where instantiating the module runs `_start`. Pooling a command instance after it has exited would be unsafe and surprising. The runtime now records proto-faaslet templates and can pre-instantiate modules that expose the experimental `wasmdee_handle` handler ABI, but normal user traffic still follows the stable fresh WASI instance path until the handler SDK and request ABI are complete.
+This is not snapshot/CoW restore. WASI command modules remain single-shot because instantiation runs `_start`. Modules that export the complete wasmdee handler ABI are routed through an exclusive instance pool: the runtime allocates request memory, calls `wasmdee_handle`, copies the response, requires a successful `wasmdee_reset`, and returns only healthy instances to the pool.
 
 ```mermaid
 flowchart LR
@@ -110,12 +110,12 @@ This split is desirable because it keeps the security and cleanup model simple w
 | scale-to-zero | implemented for compiled modules | frees warm compiled modules, but not equivalent to container replica scale-to-zero |
 | benchmark proof | implemented as a CLI harness | results still depend on controlled baseline setup |
 | proto-faaslet template store | implemented | records compiled templates, ABI, pool eligibility, and pool size; not a memory snapshot |
-| handler-ABI instance pool | initial | pre-instantiates modules exporting `wasmdee_handle`; not yet the default request path |
-| in-process function-to-function host calls | initial ABI implemented | needs SDK examples, call-chain limits, tracing, and policy hardening |
+| handler-ABI instance pool | implemented locally | bounded by configured pool size; reset is cooperative rather than a memory snapshot |
+| in-process function-to-function host calls | initial ABI implemented | cycle and depth limits are enforced; distributed tracing and richer policy remain |
 | proto-faaslet snapshots | planned | Wazero does not currently expose true page-level CoW restore as a public abstraction |
 | lazy page restore/fork template | research track | may require lower-level runtime memory control, process templates, or a Wasmtime/native experiment |
 
-The honest message for the project is: wasmdee already removes container packaging from the local hot path and proves shared compilation, autoscaled dispatch, scale-to-zero rehydration, an initial proto-faaslet template store, handler-ABI pool scaffolding, and an initial in-process call ABI. The Faasm/Catalyzer/Nightcore/SAND-style snapshot claims become valid only after the handler SDK, hardened direct local calls, snapshot mechanics, and benchmark suite are all merged.
+The honest message for the project is: wasmdee removes container packaging from the local hot path and demonstrates shared compilation, autoscaled dispatch, scale-to-zero rehydration, proto-faaslet template tracking, reusable handler instances, bounded direct calls, and reproducible benchmark tooling. Faasm/Catalyzer/Nightcore/SAND-style page snapshot and CoW claims remain invalid until lower-level memory restoration exists.
 
 ## Contributor Boundaries
 
@@ -141,12 +141,10 @@ The desktop app owns an embedded local engine and dispatcher for interactive use
 
 ## Next Runtime Milestone
 
-The next meaningful runtime layer is turning the initial proto-faaslet scaffolding into the default handler hot path:
+The next research milestone is stronger state restoration and isolation:
 
-1. Define the `wasmdee_handle` request/response ABI and SDK examples.
-2. Route handler-ABI functions through pooled instances with reset policy.
-3. Maintain a per-function warm-instance/template policy from telemetry.
-4. Track local call chains so same-host functions can stay in-process with limits and tracing.
-5. Only after the hot path is measured, introduce memory snapshot/reset mechanics.
-6. Add benchmark fixtures against the container/OpenFaaS-style baseline.
-7. Publish raw JSON benchmark artifacts and environment metadata with every performance claim.
+1. Measure reset-based handler reuse against fresh WASI instances and Docker.
+2. Add SDK packages for production languages and richer typed request metadata.
+3. Add distributed traces around gateway, queue, pool wait, execution, and host calls.
+4. Evaluate whether Wazero can support reliable memory templates; otherwise prototype snapshots with a lower-level runtime.
+5. Add multi-node placement only after the single-node data plane is fully measured.

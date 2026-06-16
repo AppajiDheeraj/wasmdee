@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,15 +18,21 @@ import (
 )
 
 var (
-	serveAddr          string
-	serveWorkers       int
-	serveMinWorkers    int
-	serveMaxWorkers    int
-	serveQueueSize     int
-	serveInvokeTimeout time.Duration
-	servePreload       bool
-	serveScaleDown     time.Duration
-	serveScaleToZero   time.Duration
+	serveAddr                 string
+	serveWorkers              int
+	serveMinWorkers           int
+	serveMaxWorkers           int
+	serveQueueSize            int
+	serveInvokeTimeout        time.Duration
+	servePreload              bool
+	serveScaleDown            time.Duration
+	serveScaleToZero          time.Duration
+	serveHandlerPoolSize      int
+	serveHandlerRequestLimit  uint32
+	serveHandlerResponseLimit uint32
+	serveMaxHostCallDepth     int
+	serveRequestBodyLimit     int64
+	serveShutdownTimeout      time.Duration
 )
 
 var serveCmd = &cobra.Command{
@@ -33,8 +40,12 @@ var serveCmd = &cobra.Command{
 	Short: "Start the HTTP gateway",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		engine, err := wasmrt.NewEngine(cmd.Context(), wasmrt.EngineConfig{
-			CacheDir:         config.GetCacheDir(),
-			ScaleToZeroAfter: serveScaleToZero,
+			CacheDir:                config.GetCacheDir(),
+			ScaleToZeroAfter:        serveScaleToZero,
+			HandlerPoolSize:         serveHandlerPoolSize,
+			MaxHandlerRequestBytes:  serveHandlerRequestLimit,
+			MaxHandlerResponseBytes: serveHandlerResponseLimit,
+			MaxHostCallDepth:        serveMaxHostCallDepth,
 		})
 		if err != nil {
 			return err
@@ -79,20 +90,41 @@ var serveCmd = &cobra.Command{
 			return preload
 		}))
 		mux.HandleFunc("GET /functions", listFunctionsHandler)
-		mux.HandleFunc("POST /invoke/", invokeHandler(dispatcher))
-		mux.HandleFunc("POST /", routeInvokeHandler(dispatcher))
+		mux.HandleFunc("POST /invoke/", invokeHandler(dispatcher, serveRequestBodyLimit))
+		mux.HandleFunc("POST /", routeInvokeHandler(dispatcher, serveRequestBodyLimit))
 
 		server := &http.Server{
 			Addr:              serveAddr,
 			Handler:           requestLogger(mux),
 			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       15 * time.Second,
+			WriteTimeout:      serveInvokeTimeout + 5*time.Second,
+			IdleTimeout:       60 * time.Second,
 		}
 
 		fmt.Fprintf(cmd.OutOrStdout(), "wasmdee gateway listening on http://%s\n", serveAddr)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			return err
+		serverErr := make(chan error, 1)
+		go func() {
+			serverErr <- server.ListenAndServe()
+		}()
+
+		select {
+		case err := <-serverErr:
+			if err != nil && err != http.ErrServerClosed {
+				return err
+			}
+			return nil
+		case <-cmd.Context().Done():
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), serveShutdownTimeout)
+			defer cancel()
+			if err := server.Shutdown(shutdownCtx); err != nil {
+				return fmt.Errorf("shutdown gateway: %w", err)
+			}
+			if err := <-serverErr; err != nil && err != http.ErrServerClosed {
+				return err
+			}
+			return nil
 		}
-		return nil
 	},
 }
 
@@ -106,6 +138,12 @@ func init() {
 	serveCmd.Flags().BoolVar(&servePreload, "preload", true, "compile deployed functions at gateway startup")
 	serveCmd.Flags().DurationVar(&serveScaleDown, "scale-down-after", 30*time.Second, "idle time before extra workers retire")
 	serveCmd.Flags().DurationVar(&serveScaleToZero, "scale-to-zero-after", 0, "idle time before compiled modules are evicted from the warm pool; 0 disables eviction")
+	serveCmd.Flags().IntVar(&serveHandlerPoolSize, "handler-pool-size", 1, "reusable instances kept for each handler-ABI function")
+	serveCmd.Flags().Uint32Var(&serveHandlerRequestLimit, "handler-request-limit", 8<<20, "maximum handler-ABI request size in bytes")
+	serveCmd.Flags().Uint32Var(&serveHandlerResponseLimit, "handler-response-limit", 8<<20, "maximum handler-ABI response size in bytes")
+	serveCmd.Flags().IntVar(&serveMaxHostCallDepth, "max-host-call-depth", 8, "maximum nested in-process function calls")
+	serveCmd.Flags().Int64Var(&serveRequestBodyLimit, "request-body-limit", 8<<20, "maximum HTTP invocation body size in bytes")
+	serveCmd.Flags().DurationVar(&serveShutdownTimeout, "shutdown-timeout", 10*time.Second, "grace period for draining accepted requests")
 }
 
 func listFunctionsHandler(w http.ResponseWriter, r *http.Request) {
@@ -129,18 +167,18 @@ func runtimeHandler(engine *wasmrt.Engine, dispatcher *wasmrt.Dispatcher, preloa
 	}
 }
 
-func routeInvokeHandler(dispatcher *wasmrt.Dispatcher) http.HandlerFunc {
+func routeInvokeHandler(dispatcher *wasmrt.Dispatcher, bodyLimit int64) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fn, err := state.GetFunctionByRoute(r.URL.Path)
 		if err != nil {
 			writeError(w, http.StatusNotFound, err)
 			return
 		}
-		invokeFunction(w, r, dispatcher, fn)
+		invokeFunction(w, r, dispatcher, fn, bodyLimit)
 	}
 }
 
-func invokeHandler(dispatcher *wasmrt.Dispatcher) http.HandlerFunc {
+func invokeHandler(dispatcher *wasmrt.Dispatcher, bodyLimit int64) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(r.URL.Path, "/invoke/")
 		name = strings.Trim(name, "/")
@@ -155,12 +193,12 @@ func invokeHandler(dispatcher *wasmrt.Dispatcher) http.HandlerFunc {
 			return
 		}
 
-		invokeFunction(w, r, dispatcher, fn)
+		invokeFunction(w, r, dispatcher, fn, bodyLimit)
 	}
 }
 
-func invokeFunction(w http.ResponseWriter, r *http.Request, dispatcher *wasmrt.Dispatcher, fn state.Function) {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
+func invokeFunction(w http.ResponseWriter, r *http.Request, dispatcher *wasmrt.Dispatcher, fn state.Function, bodyLimit int64) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, bodyLimit))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("read request body: %w", err))
 		return
@@ -175,6 +213,8 @@ func invokeFunction(w http.ResponseWriter, r *http.Request, dispatcher *wasmrt.D
 	if err != nil {
 		switch {
 		case errors.Is(err, wasmrt.ErrQueueFull):
+			writeError(w, http.StatusTooManyRequests, err)
+		case errors.Is(err, wasmrt.ErrFunctionConcurrencyLimit):
 			writeError(w, http.StatusTooManyRequests, err)
 		case errors.Is(err, wasmrt.ErrDispatcherClosed):
 			writeError(w, http.StatusServiceUnavailable, err)

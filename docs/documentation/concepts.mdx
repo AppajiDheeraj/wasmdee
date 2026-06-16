@@ -42,10 +42,10 @@ This is the simplest and most portable contract — it works with any language t
 
 Each invocation is isolated at the Wasm level:
 
-- **Linear memory** — fresh allocation per instance, zero'd on start
-- **File system** — no access unless explicitly granted in capabilities
-- **Network** — no access unless explicitly granted
-- **Other functions** — no shared state between invocations
+- **WASI linear memory** — fresh allocation per command invocation
+- **Handler linear memory** — exclusively borrowed and cooperatively reset
+- **File system** — no preopened directories in the current runtime
+- **Network** — no guest networking in the current runtime
 
 What is **shared** across invocations (for performance):
 
@@ -76,21 +76,22 @@ stateDiagram-v2
 
 ---
 
-## Capabilities
+## Deployment Controls
 
-Each function can declare what system access it needs in a `wasmdee.toml`:
+Each function can declare local scheduling policy in `wasmdee.yaml`:
 
-```toml
-[function]
-name = "my-function"
-
-[capabilities]
-network = false
-kv = false
-fs = []
+```yaml
+functions:
+  - name: my-function
+    source: ./my-function.wasm
+    controls:
+      preload: true
+      max_concurrency: 16
+      scale_to_zero_after: 5m
 ```
 
-Everything not listed is denied at the host import layer. This follows a **deny-by-default** model.
+These controls are enforced locally. Capability grants for guest filesystem,
+networking, and KV access are not implemented yet.
 
 ---
 
@@ -102,7 +103,7 @@ Container platforms package each function as a Docker image. Invocations require
 
 ### vs. Faasm
 
-[Faasm](https://github.com/faasm/faasm) pioneered shared-nothing Wasm isolation with proto-faaslets, memory snapshots, and state tiers. wasmdee is moving in the same architectural direction but starts from a simpler foundation: pure-Go runtime (Wazero), WASI command modules, and local-first operation. Proto-faaslet templates and snapshot/CoW are research milestones.
+[Faasm](https://github.com/faasm/faasm) pioneered shared-nothing Wasm isolation with proto-faaslets, memory snapshots, and state tiers. wasmdee starts from a simpler foundation: a pure-Go runtime (Wazero), WASI command modules, and local-first operation. It records compiled proto-faaslet templates and routes complete handler-ABI modules through reusable instance pools with cooperative reset; snapshot/CoW restoration remains a research milestone.
 
 ### vs. Cloudflare Workers
 

@@ -1,0 +1,11 @@
+version: 1
+name: handler-demo
+
+functions:
+  - name: echo
+    source: ./echo.wasm
+    route: /echo
+    controls:
+      preload: true
+      max_concurrency: 4
+      scale_to_zero_after: 5m

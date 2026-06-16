@@ -1,6 +1,6 @@
 ---
 title: "wasmdee"
-description: "Self-hostable serverless functions powered by WebAssembly. One binary, no containers, sub-millisecond warm invocations."
+description: "A local-first WebAssembly function runtime with a shared engine, bounded dispatch, and measurable execution paths."
 icon: "bolt"
 ---
 
@@ -8,7 +8,7 @@ icon: "bolt"
 
 wasmdee is a Wasm-native serverless function platform. Deploy a `.wasm` file, get an HTTP trigger, and run it through a shared in-process WebAssembly runtime instead of spinning up a container per function.
 
-Built on ideas from [Faasm](https://github.com/faasm/faasm), [Catalyzer](https://www.usenix.org/conference/atc20/presentation/du), [Nightcore](https://www.usenix.org/conference/asplos21/presentation/jia), and [Cloudflare Workers](https://workers.cloudflare.com/) — designed to beat the cold-start and resource overhead of container-based FaaS platforms like OpenFaaS and AWS Lambda.
+Built on ideas from [Faasm](https://github.com/faasm/faasm), [Catalyzer](https://www.usenix.org/conference/atc20/presentation/du), [Nightcore](https://www.usenix.org/conference/asplos21/presentation/jia), and [Cloudflare Workers](https://workers.cloudflare.com/). The project investigates how a shared Wasm runtime changes the startup, isolation, and resource trade-offs of container-based FaaS.
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
@@ -31,11 +31,11 @@ Built on ideas from [Faasm](https://github.com/faasm/faasm), [Catalyzer](https:/
 
 | Traditional FaaS | wasmdee |
 |---|---|
-| Container image per function | Single `.wasm` binary |
-| Docker/Kubernetes scheduling | In-process Wasm isolation |
-| 100ms+ cold starts | Sub-millisecond warm, under 10ms rehydrate |
-| GB-scale memory per function | KB-scale Wasm linear memory |
-| Network proxy between functions | Direct in-process host calls |
+| Container image per function | Content-addressed `.wasm` module |
+| Process or container per replica | Shared Wazero runtime per node |
+| Repeated startup work | Compiled-module reuse and file-backed cache |
+| Replica scale-to-zero | Idle compiled-module eviction and rehydration |
+| Network path between functions | Experimental in-process host-call ABI |
 
 ---
 
@@ -52,7 +52,8 @@ wasmdee is actively building. The core runtime is working and benchmarkable.
 | Preload + per-function telemetry | Working |
 | Benchmark command (local + HTTP) | Working |
 | In-process host-call ABI | Initial |
-| Reusable faaslet instance pool | Planned |
+| Proto-faaslet template registry | Working |
+| Handler-ABI instance pool | Working local implementation |
 | Snapshot + CoW cold-start | Research |
 
 ---

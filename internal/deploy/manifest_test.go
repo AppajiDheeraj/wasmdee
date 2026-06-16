@@ -18,7 +18,6 @@ functions:
     source: hello.wasm
     controls:
       preload: true
-      zero_copy: true
       max_concurrency: 64
       scale_to_zero_after: 5m
   - name: goodbye
@@ -59,5 +58,45 @@ functions:
 
 	if _, _, err := LoadManifest(manifestPath); err == nil {
 		t.Fatal("LoadManifest() error = nil, want validation error")
+	}
+}
+
+func TestLoadManifestRejectsNegativeConcurrency(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "wasmdee.yaml")
+	if err := os.WriteFile(manifestPath, []byte(`
+version: 1
+name: demo-api
+functions:
+  - name: hello
+    source: hello.wasm
+    controls:
+      max_concurrency: -1
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if _, _, err := LoadManifest(manifestPath); err == nil {
+		t.Fatal("LoadManifest() error = nil, want max_concurrency validation error")
+	}
+}
+
+func TestLoadManifestRejectsUnknownControls(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "wasmdee.yaml")
+	if err := os.WriteFile(manifestPath, []byte(`
+version: 1
+name: demo-api
+functions:
+  - name: hello
+    source: hello.wasm
+    controls:
+      zero_copy: true
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if _, _, err := LoadManifest(manifestPath); err == nil {
+		t.Fatal("LoadManifest() error = nil, want unknown control error")
 	}
 }

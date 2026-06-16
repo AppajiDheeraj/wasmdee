@@ -3,12 +3,14 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/dheeraj/wasmdee/internal/state"
+	"github.com/dheeraj/wasmdee/internal/wasmfixture"
 )
 
 var emptyStartWasm = []byte{
@@ -27,7 +29,9 @@ var infiniteLoopWasm = []byte{
 	0x0a, 0x09, 0x01, 0x07, 0x00, 0x03, 0x40, 0x0c, 0x00, 0x0b, 0x0b,
 }
 
-var handlerWasm = []byte{
+var handlerWasm = wasmfixture.EchoHandler(0)
+
+var incompleteHandlerWasm = []byte{
 	0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
 	0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7f,
 	0x03, 0x02, 0x01, 0x00,
@@ -89,6 +93,30 @@ func TestEnginePreloadCompilesFunctions(t *testing.T) {
 	}
 	if got := engine.Stats().CompiledModules; got != 1 {
 		t.Fatalf("CompiledModules = %d, want 1", got)
+	}
+}
+
+func TestEnginePreloadHonorsDeploymentPolicy(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	wasmPath := writeTestWasm(t, dir, "empty.wasm", emptyStartWasm)
+
+	engine, err := NewEngine(ctx, EngineConfig{CacheDir: filepath.Join(dir, "cache")})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	defer engine.Close(ctx)
+
+	result := engine.Preload(ctx, []state.Function{{
+		Name:         "empty",
+		WasmPath:     wasmPath,
+		Capabilities: `{"controls":{"preload":false}}`,
+	}})
+	if result.Requested != 1 || result.Compiled != 0 || result.Skipped != 1 || len(result.Failed) != 0 {
+		t.Fatalf("Preload() = %+v, want requested=1 compiled=0 skipped=1", result)
+	}
+	if got := engine.Stats().CompiledModules; got != 0 {
+		t.Fatalf("CompiledModules = %d, want 0", got)
 	}
 }
 
@@ -156,6 +184,186 @@ func TestEnginePreloadCreatesHandlerInstancePool(t *testing.T) {
 	}
 }
 
+func TestEngineInvokesAndReusesHandlerInstance(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	wasmPath := writeTestWasm(t, dir, "handler.wasm", handlerWasm)
+
+	engine, err := NewEngine(ctx, EngineConfig{
+		CacheDir:        filepath.Join(dir, "cache"),
+		HandlerPoolSize: 1,
+	})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	defer engine.Close(ctx)
+
+	fn := state.Function{Name: "handler", WasmPath: wasmPath}
+	for _, payload := range []string{"first request", "second request"} {
+		result, err := engine.Invoke(ctx, Invocation{Function: fn, Stdin: []byte(payload), Timeout: time.Second})
+		if err != nil {
+			t.Fatalf("Invoke(%q) error = %v", payload, err)
+		}
+		if result.Stdout != payload {
+			t.Fatalf("Invoke(%q).Stdout = %q", payload, result.Stdout)
+		}
+	}
+
+	stats := engine.Stats()
+	if stats.HandlerInvocations != 2 || stats.WarmInstances != 1 || stats.AvailableInstances != 1 {
+		t.Fatalf("Stats() = %+v, want two handler invocations and one available instance", stats)
+	}
+	if stats.PoolDiscards != 0 {
+		t.Fatalf("PoolDiscards = %d, want 0", stats.PoolDiscards)
+	}
+}
+
+func TestEngineRejectsOversizedHandlerRequest(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	wasmPath := writeTestWasm(t, dir, "handler.wasm", handlerWasm)
+
+	engine, err := NewEngine(ctx, EngineConfig{
+		CacheDir:               filepath.Join(dir, "cache"),
+		MaxHandlerRequestBytes: 4,
+	})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	defer engine.Close(ctx)
+
+	_, err = engine.Invoke(ctx, Invocation{
+		Function: state.Function{Name: "handler", WasmPath: wasmPath},
+		Stdin:    []byte("too large"),
+	})
+	if err == nil {
+		t.Fatal("Invoke() error = nil, want request size error")
+	}
+}
+
+func TestEngineRejectsIncompleteHandlerABI(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	wasmPath := writeTestWasm(t, dir, "incomplete-handler.wasm", incompleteHandlerWasm)
+
+	engine, err := NewEngine(ctx, EngineConfig{CacheDir: filepath.Join(dir, "cache")})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	defer engine.Close(ctx)
+
+	fn := state.Function{Name: "incomplete", WasmPath: wasmPath}
+	preload := engine.Preload(ctx, []state.Function{fn})
+	if preload.Compiled != 0 || len(preload.Failed) != 1 {
+		t.Fatalf("Preload() = %+v, want one ABI failure", preload)
+	}
+	if _, err := engine.Invoke(ctx, Invocation{Function: fn}); err == nil {
+		t.Fatal("Invoke() error = nil, want ABI validation error")
+	}
+}
+
+func TestEngineDiscardsHandlerWhenResetFails(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	wasmPath := writeTestWasm(t, dir, "bad-reset.wasm", wasmfixture.EchoHandler(1))
+
+	engine, err := NewEngine(ctx, EngineConfig{CacheDir: filepath.Join(dir, "cache")})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	defer engine.Close(ctx)
+
+	fn := state.Function{Name: "bad-reset", WasmPath: wasmPath}
+	result, err := engine.Invoke(ctx, Invocation{Function: fn, Stdin: []byte("response")})
+	if err == nil {
+		t.Fatal("Invoke() error = nil, want reset error")
+	}
+	if result.Stdout != "response" {
+		t.Fatalf("Invoke().Stdout = %q, want response copied before reset", result.Stdout)
+	}
+	stats := engine.Stats()
+	if stats.PoolDiscards != 1 || stats.WarmInstances != 0 {
+		t.Fatalf("Stats() = %+v, want one discard and no retained instance", stats)
+	}
+	if _, err := engine.Invoke(ctx, Invocation{Function: fn, Stdin: []byte("again")}); err == nil {
+		t.Fatal("second Invoke() error = nil, want reset error")
+	}
+	if got := engine.Stats().PoolDiscards; got != 2 {
+		t.Fatalf("PoolDiscards after replenishment = %d, want 2", got)
+	}
+}
+
+func TestEngineHandlerPoolWaitHonorsContext(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	wasmPath := writeTestWasm(t, dir, "handler.wasm", handlerWasm)
+
+	engine, err := NewEngine(ctx, EngineConfig{CacheDir: filepath.Join(dir, "cache")})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	defer engine.Close(ctx)
+
+	fn := state.Function{Name: "handler", WasmPath: wasmPath}
+	compiled, err := engine.Compile(ctx, fn)
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	if _, err := engine.pools.ensure(ctx, engine.rt, compiled, fn, 1); err != nil {
+		t.Fatalf("ensure() error = %v", err)
+	}
+	instance, err := engine.pools.acquire(ctx, fn.WasmPath)
+	if err != nil {
+		t.Fatalf("acquire() error = %v", err)
+	}
+	defer engine.pools.release(ctx, fn.WasmPath, instance, true)
+
+	waitCtx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	defer cancel()
+	if _, err := engine.Invoke(waitCtx, Invocation{Function: fn}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Invoke() error = %v, want deadline exceeded", err)
+	}
+	if got := engine.Stats().PoolWaits; got != 1 {
+		t.Fatalf("PoolWaits = %d, want 1", got)
+	}
+}
+
+func TestEngineHandlerPoolSupportsConcurrentFirstUse(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	wasmPath := writeTestWasm(t, dir, "handler.wasm", handlerWasm)
+
+	engine, err := NewEngine(ctx, EngineConfig{
+		CacheDir:        filepath.Join(dir, "cache"),
+		HandlerPoolSize: 4,
+	})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	defer engine.Close(ctx)
+
+	fn := state.Function{Name: "handler", WasmPath: wasmPath}
+	errs := make(chan error, 20)
+	for i := 0; i < 20; i++ {
+		go func() {
+			result, err := engine.Invoke(ctx, Invocation{Function: fn, Stdin: []byte("parallel")})
+			if err == nil && result.Stdout != "parallel" {
+				err = fmt.Errorf("stdout = %q", result.Stdout)
+			}
+			errs <- err
+		}()
+	}
+	for i := 0; i < 20; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent Invoke() error = %v", err)
+		}
+	}
+	stats := engine.Stats()
+	if stats.WarmInstances != 4 || stats.AvailableInstances != 4 || stats.InstancesInUse != 0 {
+		t.Fatalf("Stats() = %+v, want four available instances", stats)
+	}
+}
+
 func TestEngineEvictsAndRehydratesCompiledModule(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -212,6 +420,33 @@ func TestEngineEvictsIdleCompiledModules(t *testing.T) {
 	evicted := engine.EvictIdle(ctx, time.Millisecond)
 	if evicted.Evicted != 1 || evicted.Skipped != 0 {
 		t.Fatalf("EvictIdle() = %+v, want evicted=1 skipped=0", evicted)
+	}
+}
+
+func TestEngineEvictsFunctionUsingDeploymentPolicy(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	wasmPath := writeTestWasm(t, dir, "empty.wasm", emptyStartWasm)
+
+	engine, err := NewEngine(ctx, EngineConfig{CacheDir: filepath.Join(dir, "cache")})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	defer engine.Close(ctx)
+
+	fn := state.Function{
+		Name:         "empty",
+		WasmPath:     wasmPath,
+		Capabilities: `{"controls":{"scale_to_zero_after":"1ms"}}`,
+	}
+	if _, err := engine.Compile(ctx, fn); err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	time.Sleep(2 * time.Millisecond)
+
+	evicted := engine.evictExpired(ctx)
+	if evicted.Evicted != 1 {
+		t.Fatalf("evictExpired() = %+v, want evicted=1", evicted)
 	}
 }
 
@@ -277,6 +512,34 @@ func TestDispatcherRejectsWhenQueueFull(t *testing.T) {
 	}
 }
 
+func TestDispatcherAcceptsNilContext(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	wasmPath := writeTestWasm(t, dir, "empty.wasm", emptyStartWasm)
+
+	engine, err := NewEngine(ctx, EngineConfig{CacheDir: filepath.Join(dir, "cache")})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	defer engine.Close(ctx)
+
+	dispatcher, err := NewDispatcher(engine, DispatcherConfig{
+		Workers:        1,
+		QueueSize:      1,
+		DefaultTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewDispatcher() error = %v", err)
+	}
+	defer dispatcher.Close()
+
+	if _, err := dispatcher.Submit(nil, Invocation{
+		Function: state.Function{Name: "empty", WasmPath: wasmPath},
+	}); err != nil {
+		t.Fatalf("Submit(nil) error = %v", err)
+	}
+}
+
 func TestDispatcherScalesWorkersDownAfterIdle(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -321,6 +584,74 @@ func TestDispatcherScalesWorkersDownAfterIdle(t *testing.T) {
 		stats := dispatcher.Stats()
 		return stats.Workers == 1 && stats.ScaleDowns > 0
 	})
+}
+
+func TestDispatcherEnforcesFunctionConcurrencyLimit(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	wasmPath := writeTestWasm(t, dir, "loop.wasm", infiniteLoopWasm)
+
+	engine, err := NewEngine(ctx, EngineConfig{CacheDir: filepath.Join(dir, "cache")})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	defer engine.Close(ctx)
+
+	dispatcher, err := NewDispatcher(engine, DispatcherConfig{
+		Workers:        2,
+		QueueSize:      2,
+		DefaultTimeout: 100 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("NewDispatcher() error = %v", err)
+	}
+	defer dispatcher.Close()
+
+	fn := state.Function{
+		Name:         "limited",
+		WasmPath:     wasmPath,
+		Capabilities: `{"controls":{"max_concurrency":1}}`,
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := dispatcher.Submit(ctx, Invocation{Function: fn})
+		done <- err
+	}()
+	waitFor(t, time.Second, func() bool {
+		stats := dispatcher.FunctionStats()
+		return len(stats) == 1 && stats[0].InFlight == 1
+	})
+
+	if _, err := dispatcher.Submit(ctx, Invocation{Function: fn}); !errors.Is(err, ErrFunctionConcurrencyLimit) {
+		t.Fatalf("Submit() error = %v, want %v", err, ErrFunctionConcurrencyLimit)
+	}
+	<-done
+}
+
+func TestEngineRejectsCyclicAndDeepFunctionCalls(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	wasmPath := writeTestWasm(t, dir, "empty.wasm", emptyStartWasm)
+	fn := state.Function{Name: "empty", WasmPath: wasmPath}
+
+	engine, err := NewEngine(ctx, EngineConfig{
+		CacheDir:         filepath.Join(dir, "cache"),
+		MaxHostCallDepth: 2,
+	})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	defer engine.Close(ctx)
+
+	cycleCtx := context.WithValue(ctx, invocationStackKey{}, []string{"empty"})
+	if _, err := engine.Invoke(cycleCtx, Invocation{Function: fn}); err == nil {
+		t.Fatal("Invoke() cyclic error = nil")
+	}
+
+	deepCtx := context.WithValue(ctx, invocationStackKey{}, []string{"first", "second"})
+	if _, err := engine.Invoke(deepCtx, Invocation{Function: fn}); err == nil {
+		t.Fatal("Invoke() depth error = nil")
+	}
 }
 
 func writeTestWasm(t *testing.T, dir, name string, wasm []byte) string {

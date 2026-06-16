@@ -23,6 +23,11 @@ const (
 	hostInvokeTargetError
 	hostInvokeOutputTooLarge
 	hostInvokeNonZeroExit
+
+	defaultHandlerPoolSize      = 1
+	defaultHandlerRequestLimit  = 8 << 20
+	defaultHandlerResponseLimit = 8 << 20
+	defaultHostCallDepth        = 8
 )
 
 // Invocation captures the inputs for a single Wasm function run.
@@ -44,9 +49,13 @@ type Result struct {
 
 // EngineConfig controls the long-lived runtime process for Wasm execution.
 type EngineConfig struct {
-	CacheDir         string
-	ScaleToZeroAfter time.Duration
-	HostCallTimeout  time.Duration
+	CacheDir                string
+	ScaleToZeroAfter        time.Duration
+	HostCallTimeout         time.Duration
+	HandlerPoolSize         int
+	MaxHandlerRequestBytes  uint32
+	MaxHandlerResponseBytes uint32
+	MaxHostCallDepth        int
 }
 
 // EngineStats exposes lightweight counters for gateway health and debugging.
@@ -61,6 +70,11 @@ type EngineStats struct {
 	ProtoFaaslets      int     `json:"proto_faaslets"`
 	InstancePools      int     `json:"instance_pools"`
 	WarmInstances      int     `json:"warm_instances"`
+	AvailableInstances int     `json:"available_instances"`
+	InstancesInUse     int     `json:"instances_in_use"`
+	HandlerInvocations uint64  `json:"handler_invocations"`
+	PoolWaits          uint64  `json:"pool_waits"`
+	PoolDiscards       uint64  `json:"pool_discards"`
 	ScaleToZeroAfterMS float64 `json:"scale_to_zero_after_ms,omitempty"`
 }
 
@@ -74,6 +88,7 @@ type PreloadError struct {
 type PreloadResult struct {
 	Requested int            `json:"requested"`
 	Compiled  int            `json:"compiled"`
+	Skipped   int            `json:"skipped"`
 	Failed    []PreloadError `json:"failed,omitempty"`
 }
 
@@ -86,10 +101,13 @@ type EvictionResult struct {
 }
 
 type compiledEntry struct {
-	module   wazero.CompiledModule
-	name     string
-	lastUsed time.Time
+	module           wazero.CompiledModule
+	name             string
+	lastUsed         time.Time
+	scaleToZeroAfter time.Duration
 }
+
+type invocationStackKey struct{}
 
 // Engine owns the shared Wazero runtime, WASI imports, compilation cache, and
 // in-memory compiled module map. Invocations still get isolated module
@@ -104,17 +122,24 @@ type Engine struct {
 	proto    *protoStore
 	pools    *instancePoolStore
 
-	scaleToZeroAfter time.Duration
-	hostCallTimeout  time.Duration
-	reaperStop       chan struct{}
-	reaperDone       chan struct{}
+	scaleToZeroAfter        time.Duration
+	hostCallTimeout         time.Duration
+	handlerPoolSize         int
+	maxHandlerRequestBytes  uint32
+	maxHandlerResponseBytes uint32
+	maxHostCallDepth        int
+	reaperStop              chan struct{}
+	reaperDone              chan struct{}
 
-	compileRequests  atomic.Uint64
-	compileHits      atomic.Uint64
-	invocations      atomic.Uint64
-	evictions        atomic.Uint64
-	hostCalls        atomic.Uint64
-	hostCallFailures atomic.Uint64
+	compileRequests    atomic.Uint64
+	compileHits        atomic.Uint64
+	invocations        atomic.Uint64
+	evictions          atomic.Uint64
+	hostCalls          atomic.Uint64
+	hostCallFailures   atomic.Uint64
+	handlerInvocations atomic.Uint64
+	poolWaits          atomic.Uint64
+	poolDiscards       atomic.Uint64
 }
 
 // NewEngine creates a long-lived Wasm runtime process.
@@ -135,29 +160,41 @@ func NewEngine(ctx context.Context, cfg EngineConfig) (*Engine, error) {
 	}
 
 	engine := &Engine{
-		cache:            cache,
-		rt:               rt,
-		compiled:         make(map[string]*compiledEntry),
-		proto:            newProtoStore(),
-		pools:            newInstancePoolStore(),
-		scaleToZeroAfter: cfg.ScaleToZeroAfter,
-		hostCallTimeout:  cfg.HostCallTimeout,
-		reaperStop:       make(chan struct{}),
-		reaperDone:       make(chan struct{}),
+		cache:                   cache,
+		rt:                      rt,
+		compiled:                make(map[string]*compiledEntry),
+		proto:                   newProtoStore(),
+		pools:                   newInstancePoolStore(),
+		scaleToZeroAfter:        cfg.ScaleToZeroAfter,
+		hostCallTimeout:         cfg.HostCallTimeout,
+		handlerPoolSize:         cfg.HandlerPoolSize,
+		maxHandlerRequestBytes:  cfg.MaxHandlerRequestBytes,
+		maxHandlerResponseBytes: cfg.MaxHandlerResponseBytes,
+		maxHostCallDepth:        cfg.MaxHostCallDepth,
+		reaperStop:              make(chan struct{}),
+		reaperDone:              make(chan struct{}),
 	}
 	if engine.hostCallTimeout <= 0 {
 		engine.hostCallTimeout = 5 * time.Second
+	}
+	if engine.handlerPoolSize <= 0 {
+		engine.handlerPoolSize = defaultHandlerPoolSize
+	}
+	if engine.maxHandlerRequestBytes == 0 {
+		engine.maxHandlerRequestBytes = defaultHandlerRequestLimit
+	}
+	if engine.maxHandlerResponseBytes == 0 {
+		engine.maxHandlerResponseBytes = defaultHandlerResponseLimit
+	}
+	if engine.maxHostCallDepth <= 0 {
+		engine.maxHostCallDepth = defaultHostCallDepth
 	}
 	if err := engine.instantiateHostABI(ctx); err != nil {
 		_ = rt.Close(ctx)
 		_ = cache.Close(ctx)
 		return nil, err
 	}
-	if cfg.ScaleToZeroAfter > 0 {
-		go engine.reapIdleModules(ctx, cfg.ScaleToZeroAfter)
-	} else {
-		close(engine.reaperDone)
-	}
+	go engine.reapIdleModules(ctx)
 	return engine, nil
 }
 
@@ -191,16 +228,21 @@ func (e *Engine) Stats() EngineStats {
 	protoStats := e.proto.stats(poolStats)
 
 	stats := EngineStats{
-		CompiledModules:  compiled,
-		CompileRequests:  e.compileRequests.Load(),
-		CompileHits:      e.compileHits.Load(),
-		Invocations:      e.invocations.Load(),
-		Evictions:        e.evictions.Load(),
-		HostCalls:        e.hostCalls.Load(),
-		HostCallFailures: e.hostCallFailures.Load(),
-		ProtoFaaslets:    protoStats.Templates,
-		InstancePools:    protoStats.InstancePools,
-		WarmInstances:    protoStats.WarmInstances,
+		CompiledModules:    compiled,
+		CompileRequests:    e.compileRequests.Load(),
+		CompileHits:        e.compileHits.Load(),
+		Invocations:        e.invocations.Load(),
+		Evictions:          e.evictions.Load(),
+		HostCalls:          e.hostCalls.Load(),
+		HostCallFailures:   e.hostCallFailures.Load(),
+		ProtoFaaslets:      protoStats.Templates,
+		InstancePools:      protoStats.InstancePools,
+		WarmInstances:      protoStats.WarmInstances,
+		AvailableInstances: poolStats.Available,
+		InstancesInUse:     poolStats.InUse,
+		HandlerInvocations: e.handlerInvocations.Load(),
+		PoolWaits:          e.poolWaits.Load(),
+		PoolDiscards:       e.poolDiscards.Load(),
 	}
 	if e.scaleToZeroAfter > 0 {
 		stats.ScaleToZeroAfterMS = float64(e.scaleToZeroAfter.Microseconds()) / 1000.0
@@ -212,13 +254,28 @@ func (e *Engine) Stats() EngineStats {
 func (e *Engine) Preload(ctx context.Context, functions []state.Function) PreloadResult {
 	result := PreloadResult{Requested: len(functions)}
 	for _, fn := range functions {
+		shouldPreload, err := functionShouldPreload(fn)
+		if err != nil {
+			result.Failed = append(result.Failed, PreloadError{Name: fn.Name, Err: err.Error()})
+			continue
+		}
+		if !shouldPreload {
+			result.Skipped++
+			continue
+		}
 		compiled, err := e.Compile(ctx, fn)
 		if err != nil {
 			result.Failed = append(result.Failed, PreloadError{Name: fn.Name, Err: err.Error()})
 			continue
 		}
+		if hasHandlerExport(compiled) {
+			if err := validateHandlerABI(compiled); err != nil {
+				result.Failed = append(result.Failed, PreloadError{Name: fn.Name, Err: err.Error()})
+				continue
+			}
+		}
 		if isHandlerABI(compiled) {
-			poolSize, err := e.pools.ensure(ctx, e.rt, compiled, fn, 1)
+			poolSize, err := e.pools.ensure(ctx, e.rt, compiled, fn, e.handlerPoolSize)
 			if err != nil {
 				result.Failed = append(result.Failed, PreloadError{Name: fn.Name, Err: err.Error()})
 				continue
@@ -277,7 +334,17 @@ func (e *Engine) Compile(ctx context.Context, fn state.Function) (wazero.Compile
 	if err != nil {
 		return nil, fmt.Errorf("compile wasm module: %w", err)
 	}
-	e.compiled[key] = &compiledEntry{module: compiled, name: fn.Name, lastUsed: time.Now()}
+	scaleToZeroAfter, err := functionScaleToZeroAfter(fn)
+	if err != nil {
+		_ = compiled.Close(ctx)
+		return nil, err
+	}
+	e.compiled[key] = &compiledEntry{
+		module:           compiled,
+		name:             fn.Name,
+		lastUsed:         time.Now(),
+		scaleToZeroAfter: scaleToZeroAfter,
+	}
 	e.proto.recordCompiled(fn, detectABI(compiled), e.pools.size(fn.WasmPath))
 	return compiled, nil
 }
@@ -371,19 +438,41 @@ func Invoke(ctx context.Context, inv Invocation) (Result, error) {
 	return engine.Invoke(ctx, inv)
 }
 
-// Invoke runs a WASI command-style module through this long-lived runtime.
+// Invoke selects the stable WASI command path or the reusable handler ABI path.
 func (e *Engine) Invoke(ctx context.Context, inv Invocation) (Result, error) {
 	if inv.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, inv.Timeout)
 		defer cancel()
 	}
+	stack, _ := ctx.Value(invocationStackKey{}).([]string)
+	if len(stack) >= e.maxHostCallDepth {
+		return Result{}, fmt.Errorf("function call depth exceeds %d", e.maxHostCallDepth)
+	}
+	for _, name := range stack {
+		if name == inv.Function.Name {
+			return Result{}, fmt.Errorf("cyclic in-process function call to %q", inv.Function.Name)
+		}
+	}
+	nextStack := append(append([]string(nil), stack...), inv.Function.Name)
+	ctx = context.WithValue(ctx, invocationStackKey{}, nextStack)
 
 	compiled, err := e.Compile(ctx, inv.Function)
 	if err != nil {
 		return Result{}, err
 	}
+	if hasHandlerExport(compiled) {
+		if err := validateHandlerABI(compiled); err != nil {
+			return Result{}, fmt.Errorf("function %q: %w", inv.Function.Name, err)
+		}
+	}
+	if isHandlerABI(compiled) {
+		return e.invokeHandler(ctx, compiled, inv)
+	}
+	return e.invokeWASI(ctx, compiled, inv)
+}
 
+func (e *Engine) invokeWASI(ctx context.Context, compiled wazero.CompiledModule, inv Invocation) (Result, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	args := append([]string{inv.Function.Name}, inv.Args...)
@@ -419,6 +508,93 @@ func (e *Engine) Invoke(ctx context.Context, inv Invocation) (Result, error) {
 	}
 
 	return result, fmt.Errorf("invoke %q: %w", inv.Function.Name, err)
+}
+
+func (e *Engine) invokeHandler(ctx context.Context, compiled wazero.CompiledModule, inv Invocation) (result Result, err error) {
+	if len(inv.Args) > 0 {
+		return Result{}, fmt.Errorf("handler ABI function %q does not accept argv", inv.Function.Name)
+	}
+	if uint64(len(inv.Stdin)) > uint64(e.maxHandlerRequestBytes) {
+		return Result{}, fmt.Errorf("handler request for %q exceeds %d bytes", inv.Function.Name, e.maxHandlerRequestBytes)
+	}
+	if _, err := e.pools.ensure(ctx, e.rt, compiled, inv.Function, e.handlerPoolSize); err != nil {
+		return Result{}, err
+	}
+
+	if e.pools.available(inv.Function.WasmPath) == 0 {
+		e.poolWaits.Add(1)
+	}
+	instance, err := e.pools.acquire(ctx, inv.Function.WasmPath)
+	if err != nil {
+		return Result{}, fmt.Errorf("acquire handler instance %q: %w", inv.Function.Name, err)
+	}
+
+	reusable := false
+	defer func() {
+		if !reusable {
+			e.poolDiscards.Add(1)
+		}
+		e.pools.release(context.Background(), inv.Function.WasmPath, instance, reusable)
+		e.proto.touch(inv.Function.WasmPath, e.pools.size(inv.Function.WasmPath))
+	}()
+
+	start := time.Now()
+	defer func() {
+		result.Latency = time.Since(start)
+		e.invocations.Add(1)
+		e.handlerInvocations.Add(1)
+		e.touch(inv.Function.WasmPath)
+	}()
+
+	module := instance.module
+	memory := module.Memory()
+	alloc := module.ExportedFunction(handlerAllocName)
+	handle := module.ExportedFunction(handlerExportName)
+	reset := module.ExportedFunction(handlerResetName)
+	if memory == nil || alloc == nil || handle == nil || reset == nil {
+		return Result{}, fmt.Errorf("handler instance %q does not satisfy the runtime ABI", inv.Function.Name)
+	}
+
+	allocResult, err := alloc.Call(ctx, uint64(uint32(len(inv.Stdin))))
+	if err != nil || len(allocResult) != 1 {
+		return Result{}, fmt.Errorf("allocate handler request for %q: %w", inv.Function.Name, firstError(err, errors.New("invalid allocator result")))
+	}
+	requestPtr := uint32(allocResult[0])
+	if len(inv.Stdin) > 0 && !memory.Write(requestPtr, inv.Stdin) {
+		return Result{}, fmt.Errorf("write handler request for %q outside linear memory", inv.Function.Name)
+	}
+
+	handleResult, err := handle.Call(ctx, uint64(requestPtr), uint64(uint32(len(inv.Stdin))))
+	if err != nil || len(handleResult) != 1 {
+		return Result{}, fmt.Errorf("execute handler %q: %w", inv.Function.Name, firstError(err, errors.New("invalid handler result")))
+	}
+	responsePtr, responseLen := unpackHandlerResult(handleResult[0])
+	if responseLen > e.maxHandlerResponseBytes {
+		return Result{}, fmt.Errorf("handler response for %q exceeds %d bytes", inv.Function.Name, e.maxHandlerResponseBytes)
+	}
+	response, ok := memory.Read(responsePtr, responseLen)
+	if !ok {
+		return Result{}, fmt.Errorf("read handler response for %q outside linear memory", inv.Function.Name)
+	}
+	result.Stdout = string(append([]byte(nil), response...))
+
+	resetResult, err := reset.Call(ctx)
+	if err != nil || len(resetResult) != 1 || uint32(resetResult[0]) != 0 {
+		return result, fmt.Errorf("reset handler instance %q: %w", inv.Function.Name, firstError(err, errors.New("reset returned non-zero status")))
+	}
+	reusable = true
+	return result, nil
+}
+
+func unpackHandlerResult(value uint64) (uint32, uint32) {
+	return uint32(value >> 32), uint32(value)
+}
+
+func firstError(primary, fallback error) error {
+	if primary != nil {
+		return primary
+	}
+	return fallback
 }
 
 func (e *Engine) instantiateHostABI(ctx context.Context) error {
@@ -514,23 +690,57 @@ func (e *Engine) touch(key string) {
 	e.mu.Unlock()
 }
 
-func (e *Engine) reapIdleModules(ctx context.Context, idleFor time.Duration) {
+func (e *Engine) reapIdleModules(ctx context.Context) {
 	defer close(e.reaperDone)
-	interval := idleFor / 2
-	if interval < time.Second {
-		interval = time.Second
-	}
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			_ = e.EvictIdle(ctx, idleFor)
+			_ = e.evictExpired(ctx)
 		case <-e.reaperStop:
 			return
 		case <-ctx.Done():
 			return
 		}
 	}
+}
+
+func (e *Engine) evictExpired(ctx context.Context) EvictionResult {
+	result := EvictionResult{}
+	now := time.Now()
+	var evict []*compiledEntry
+	var evictKeys []string
+
+	e.mu.Lock()
+	for key, entry := range e.compiled {
+		idleFor := entry.scaleToZeroAfter
+		if idleFor <= 0 {
+			idleFor = e.scaleToZeroAfter
+		}
+		if idleFor <= 0 {
+			continue
+		}
+		result.Requested++
+		if now.Sub(entry.lastUsed) < idleFor {
+			result.Skipped++
+			continue
+		}
+		delete(e.compiled, key)
+		evict = append(evict, entry)
+		evictKeys = append(evictKeys, key)
+	}
+	e.mu.Unlock()
+
+	for i, entry := range evict {
+		e.pools.remove(ctx, evictKeys[i])
+		e.proto.remove(evictKeys[i])
+		if err := entry.module.Close(ctx); err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", entry.name, err))
+		}
+		result.Evicted++
+		e.evictions.Add(1)
+	}
+	return result
 }

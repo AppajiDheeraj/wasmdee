@@ -9,6 +9,5 @@ functions:
     deploy: true
     controls:
       preload: true
-      zero_copy: true
       max_concurrency: 64
       scale_to_zero_after: 5m

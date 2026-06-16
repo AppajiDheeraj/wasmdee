@@ -27,13 +27,14 @@ export function InvokeFunction({ functionRows = [], response, selectedFunction, 
         .filter(Boolean),
     [argText]
   );
+  const isHandler = currentFunction?.abi === 'wasmdee-handler';
 
   if (functionRows.length === 0) {
     return <EmptyInvoke onDeploy={onDeploy} />;
   }
 
   const invoke = () => {
-    onInvoke?.({ name: currentFunction?.name, body, args });
+    onInvoke?.({ name: currentFunction?.name, body, args: isHandler ? [] : args });
   };
 
   return (
@@ -41,7 +42,9 @@ export function InvokeFunction({ functionRows = [], response, selectedFunction, 
       <section className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Invoke</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Send stdin and argv to a deployed WASI command module.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {isHandler ? 'Send a request through a reusable handler instance.' : 'Send stdin and argv to a WASI command module.'}
+          </p>
         </div>
         <Button type="button" className="h-8 rounded-lg px-3 text-sm shadow-sm" onClick={invoke} disabled={!currentFunction}>
           <Play />
@@ -69,21 +72,25 @@ export function InvokeFunction({ functionRows = [], response, selectedFunction, 
             </select>
           </label>
 
-          <label className="grid gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Arguments</span>
-            <Input
-              className="h-9 rounded-lg bg-background/70 font-mono text-sm"
-              placeholder="arg1, arg2, arg3"
-              value={argText}
-              onChange={(event) => setArgText(event.target.value)}
-            />
-          </label>
+          {!isHandler && (
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Arguments</span>
+              <Input
+                className="h-9 rounded-lg bg-background/70 font-mono text-sm"
+                placeholder="arg1, arg2, arg3"
+                value={argText}
+                onChange={(event) => setArgText(event.target.value)}
+              />
+            </label>
+          )}
 
           <label className="grid gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">stdin body</span>
+            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {isHandler ? 'Request body' : 'stdin body'}
+            </span>
             <textarea
               className="min-h-[220px] resize-y rounded-lg border border-border bg-background/70 p-3 font-mono text-sm leading-6 outline-none transition focus:border-foreground"
-              placeholder="Request body passed to stdin"
+              placeholder={isHandler ? 'Request bytes written into Wasm memory' : 'Request body passed to stdin'}
               value={body}
               onChange={(event) => setBody(event.target.value)}
             />

@@ -103,12 +103,14 @@ can be measured and explained.
 ### Proto-faaslet foundation
 
 - Runtime-level proto-faaslet template registry.
-- ABI detection for WASI command and `wasmdee_handle` modules.
-- Pool eligibility and warm-instance tracking.
-- Initial pre-instantiated pool for handler-ABI modules.
+- Strict handler ABI and export-signature validation.
+- Exclusive borrowing from pre-instantiated per-function pools.
+- Request/response memory bounds and reset-before-reuse semantics.
+- Discard-on-failure behavior with available, in-use, wait, and discard telemetry.
 
-WASI command traffic still uses fresh instances. The handler pool is scaffolding
-for the next request/response ABI and SDK milestone; it is not snapshot restore.
+WASI command traffic still uses fresh instances. Modules that implement the
+complete handler ABI use the pooled path automatically. This is reusable
+instance execution, not snapshot or CoW restoration.
 
 ## Architecture
 
@@ -131,7 +133,8 @@ sequenceDiagram
     participant Registry as SQLite registry
     participant Dispatcher
     participant Engine as Wazero engine
-    participant Module as Fresh WASI instance
+    participant Pool as Handler instance pool
+    participant Module as Wasm execution
 
     Client->>Gateway: POST /route
     Gateway->>Registry: Resolve route or function name
@@ -141,8 +144,16 @@ sequenceDiagram
     alt Queue has capacity
         Dispatcher->>Engine: Invoke function
         Engine->>Engine: Compile or reuse compiled module
-        Engine->>Module: Instantiate with stdin and argv
-        Module-->>Engine: stdout, stderr, exit code
+        alt WASI command
+            Engine->>Module: Instantiate fresh state with stdin and argv
+            Module-->>Engine: stdout, stderr, exit code
+        else Handler ABI
+            Engine->>Pool: Borrow exclusive instance
+            Pool->>Module: Allocate request and call handler
+            Module-->>Pool: Response pointer and length
+            Pool->>Pool: Reset or discard instance
+            Pool-->>Engine: Response bytes
+        end
         Engine-->>Dispatcher: Result and latency
         Dispatcher-->>Gateway: Completed invocation
         Gateway-->>Client: JSON response
@@ -227,7 +238,6 @@ functions:
     deploy: true
     controls:
       preload: true
-      zero_copy: true
       max_concurrency: 64
       scale_to_zero_after: 5m
 
@@ -243,8 +253,8 @@ Deploy the application:
 ./bin/wasmdee deploy --config ./wasmdee.yaml
 ```
 
-Current manifest controls are validated and stored as deployment policy
-metadata. Not every control is enforced by the runtime yet.
+`preload`, `max_concurrency`, and `scale_to_zero_after` are enforced by the
+runtime. Unknown or unsupported controls are rejected during deployment.
 
 Custom domains generate public URL metadata. DNS records, certificates, ingress,
 and externally reachable routing are not provisioned by the current local
@@ -300,7 +310,7 @@ Useful gateway endpoints:
 | Cold | Create an engine and compile the module without an in-process entry |
 | Rehydrate | Reload after in-memory eviction while retaining the file-backed cache |
 | Warm | Reuse the engine and compiled module, then instantiate fresh execution state |
-| Handler pool | Pre-instantiate `wasmdee_handle` modules; request ABI integration is in progress |
+| Handler pool | Borrow a pre-instantiated handler, copy request bytes into linear memory, execute, reset, and return it |
 | Snapshot/CoW | Planned research milestone |
 
 ## Desktop Console
@@ -342,6 +352,10 @@ opens directly as a local runtime console.
 │   ├── benchmarking.md      Reproducible measurement rules
 │   └── diagrams/            Editable SVG and Excalidraw architecture files
 ├── examples/hello/          Example configuration
+├── examples/handler/        Runnable pooled-handler fixture
+├── benchmarks/docker/       Same-machine container baseline
+├── scripts/                 Reproducible comparison workflow
+├── tools/handler-example/   Zero-dependency fixture generator
 ├── Makefile
 └── .github/workflows/ci.yml
 ```
@@ -359,7 +373,8 @@ opens directly as a local runtime console.
 | Compiled-module scale-to-zero | Working MVP |
 | Direct in-process host call | Experimental |
 | Proto-faaslet template store | Initial implementation |
-| Handler-ABI instance pool | Initial scaffolding |
+| Handler-ABI instance pool | Working local implementation |
+| Per-function preload, concurrency, and scale-to-zero controls | Working MVP |
 | External domain provisioning | Planned |
 | Cluster scheduler and multi-node placement | Planned |
 | Snapshot/CoW and lazy page restoration | Research |
@@ -375,6 +390,10 @@ stdin, arguments through argv, and results leave through stdout and stderr.
 The trade-off is that command modules are single-shot. A reusable faaslet pool
 requires a stable handler ABI with explicit request, response, allocation, and
 memory-reset semantics.
+
+wasmdee now provides that handler ABI for modules that opt in. See
+[`docs/handler-abi.md`](docs/handler-abi.md) and the runnable
+[`examples/handler`](examples/handler/README.md) fixture.
 
 ### Why fresh instances?
 
@@ -398,6 +417,8 @@ available through the CLI and documentation.
 - [Architecture](docs/architecture.md)
 - [System tracing](docs/tracing.md)
 - [Benchmark methodology](docs/benchmarking.md)
+- [Handler ABI](docs/handler-abi.md)
+- [Internship demo runbook](docs/internship-demo.md)
 - [Documentation site source](docs/documentation/)
 - [Desktop console](gui/README.md)
 - [Hello example](examples/hello/README.md)

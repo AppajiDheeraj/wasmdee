@@ -128,7 +128,8 @@ sequenceDiagram
     participant Dispatcher as "Dispatcher"
     participant Worker as "Worker"
     participant Engine as "Wazero engine"
-    participant Module as "Fresh WASI instance"
+    participant Pool as "Handler instance pool"
+    participant Module as "Wasm execution"
 
     Client->>Gateway: POST /hello body + ?arg=
     Gateway->>DB: GetFunctionByRoute("/hello")
@@ -138,8 +139,16 @@ sequenceDiagram
         Dispatcher->>Worker: enqueue job
         Worker->>Engine: Invoke(function, stdin, argv)
         Engine->>Engine: Compile() or warm-pool hit
-        Engine->>Module: Instantiate compiled module with stdin/stdout/stderr
-        Module-->>Engine: stdout, stderr, exit code
+        alt WASI command
+            Engine->>Module: Instantiate compiled module with stdin/stdout/stderr
+            Module-->>Engine: stdout, stderr, exit code
+        else Handler ABI
+            Engine->>Pool: Borrow exclusive instance
+            Pool->>Module: Allocate request and call wasmdee_handle
+            Module-->>Pool: Packed response pointer and length
+            Pool->>Pool: wasmdee_reset or discard
+            Pool-->>Engine: Response bytes
+        end
         Engine-->>Worker: result + latency
         Worker-->>Dispatcher: complete telemetry
         Dispatcher-->>Gateway: result
@@ -157,11 +166,9 @@ Current isolation model:
 - Per invocation: Wasm instance, linear memory, stdin/stdout/stderr buffers,
   argv, timeout context.
 
-This is why the stable request path remains a compiled-module warm pool plus a
-fresh WASI instance. The runtime now also records proto-faaslet templates and can
-pre-instantiate modules that expose the experimental `wasmdee_handle` handler
-ABI, but that handler path still needs an SDK and request/response ABI before it
-becomes the normal invocation route.
+WASI commands use a compiled-module warm pool plus a fresh instance. Modules
+that satisfy the complete handler ABI automatically use the reusable pool path.
+The reset contract is cooperative and is not equivalent to snapshot restore.
 
 ## GUI Trace
 
@@ -322,7 +329,7 @@ The concise explanation:
 > executes stable WASI command requests as fresh isolated instances from a warm
 > compiled module. The current system proves compiled-module reuse, route
 > deployment, local autoscaling, scale-to-zero rehydration, proto-faaslet
-> template tracking, handler-ABI pool scaffolding, direct host-call experiments,
+> template tracking, reusable handler-instance execution, bounded direct calls,
 > and benchmark reporting. Snapshot/CoW restore is the next research milestone,
 > not a current launch claim.
 
@@ -336,7 +343,7 @@ The concise explanation:
 | long-lived runtime | implemented |
 | compiled-module warm pool | implemented |
 | proto-faaslet template store | implemented |
-| handler-ABI instance pool | initial scaffolding |
+| handler-ABI instance pool | implemented with borrow, reset, reuse, and discard |
 | fresh memory per invocation | implemented |
 | local worker autoscaling | implemented |
 | compiled-module scale-to-zero | implemented |

@@ -206,7 +206,7 @@ export function AuthPage({
               </h2>
               <p className="mt-4 max-w-lg text-sm leading-6 text-white/78">
                 Keep the workflow focused with a native Wails shell, polished auth entry, and a
-                production-ready dashboard once you sign in.
+                live local runtime console once you sign in.
               </p>
             </div>
           </div>

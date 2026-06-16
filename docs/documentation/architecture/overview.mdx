@@ -86,5 +86,5 @@ POST /invoke/{name} → request body → dispatcher queue → worker → shared 
 1. **Single binary** — no Docker, no sidecar, no orchestrator required
 2. **Pure Go** — Wazero is a zero-dependency Wasm runtime; no CGo, no native libraries
 3. **Local-first** — state is SQLite + filesystem; no external services for core operation
-4. **Deny-by-default** — functions cannot access network, filesystem, or KV unless declared
+4. **Restricted host surface** — the current runtime exposes WASI stdio and wasmdee host calls, without guest network or preopened filesystem access
 5. **Measure before claiming** — performance assertions require benchmark evidence

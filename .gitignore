@@ -3,6 +3,7 @@ bin/
 
 # Go
 coverage.out
+benchmark-results/
 
 # Frontend
 gui/frontend/dist/

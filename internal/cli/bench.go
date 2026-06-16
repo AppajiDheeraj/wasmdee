@@ -36,6 +36,7 @@ var (
 	benchMaxWorkers  int
 	benchScaleDown   time.Duration
 	benchScaleToZero time.Duration
+	benchHandlerPool int
 	benchJSON        bool
 	benchReportPath  string
 )
@@ -63,21 +64,22 @@ var benchCmd = &cobra.Command{
 }
 
 type benchReport struct {
-	Label       string                  `json:"label,omitempty"`
-	Target      string                  `json:"target"`
-	Mode        string                  `json:"mode"`
-	GeneratedAt string                  `json:"generated_at"`
-	Iterations  int                     `json:"iterations"`
-	Warmup      int                     `json:"warmup"`
-	Concurrency int                     `json:"concurrency"`
-	System      benchSystem             `json:"system"`
-	Memory      *benchMemory            `json:"memory,omitempty"`
-	Cold        *benchSeries            `json:"cold,omitempty"`
-	Rehydrate   *benchSeries            `json:"rehydrate,omitempty"`
-	Warm        benchSeries             `json:"warm"`
-	Engine      *wasmrt.EngineStats     `json:"engine,omitempty"`
-	Dispatcher  *wasmrt.DispatcherStats `json:"dispatcher,omitempty"`
-	Notes       []string                `json:"notes,omitempty"`
+	Label        string                  `json:"label,omitempty"`
+	Target       string                  `json:"target"`
+	Mode         string                  `json:"mode"`
+	GeneratedAt  string                  `json:"generated_at"`
+	Iterations   int                     `json:"iterations"`
+	Warmup       int                     `json:"warmup"`
+	Concurrency  int                     `json:"concurrency"`
+	System       benchSystem             `json:"system"`
+	Memory       *benchMemory            `json:"memory,omitempty"`
+	Cold         *benchSeries            `json:"cold,omitempty"`
+	Rehydrate    *benchSeries            `json:"rehydrate,omitempty"`
+	Warm         benchSeries             `json:"warm"`
+	Engine       *wasmrt.EngineStats     `json:"engine,omitempty"`
+	Dispatcher   *wasmrt.DispatcherStats `json:"dispatcher,omitempty"`
+	ExecutionABI string                  `json:"execution_abi,omitempty"`
+	Notes        []string                `json:"notes,omitempty"`
 }
 
 type benchSystem struct {
@@ -120,6 +122,7 @@ func init() {
 	benchCmd.Flags().IntVar(&benchMaxWorkers, "max-workers", max(1, goruntime.NumCPU()*4), "maximum local benchmark dispatcher workers")
 	benchCmd.Flags().DurationVar(&benchScaleDown, "scale-down-after", 5*time.Second, "idle time before benchmark workers retire")
 	benchCmd.Flags().DurationVar(&benchScaleToZero, "scale-to-zero-after", 0, "idle time before local compiled modules are evicted; 0 disables background eviction")
+	benchCmd.Flags().IntVar(&benchHandlerPool, "handler-pool-size", 0, "handler instances used for local benchmarks; 0 matches concurrency")
 	benchCmd.Flags().BoolVar(&benchJSON, "json", false, "print machine-readable JSON")
 	benchCmd.Flags().StringVar(&benchReportPath, "report", "", "write benchmark report to .json or .html")
 }
@@ -167,6 +170,7 @@ func benchmarkWasm(ctx context.Context, wasmPath string) (benchReport, error) {
 	engine, err := wasmrt.NewEngine(ctx, wasmrt.EngineConfig{
 		CacheDir:         config.GetCacheDir(),
 		ScaleToZeroAfter: benchScaleToZero,
+		HandlerPoolSize:  benchmarkHandlerPoolSize(),
 	})
 	if err != nil {
 		return benchReport{}, err
@@ -176,6 +180,9 @@ func benchmarkWasm(ctx context.Context, wasmPath string) (benchReport, error) {
 	preload := engine.Preload(ctx, []state.Function{fn})
 	if len(preload.Failed) > 0 {
 		return benchReport{}, fmt.Errorf("preload failed: %s", preload.Failed[0].Err)
+	}
+	if templates := engine.ProtoFaaslets(); len(templates) > 0 {
+		report.ExecutionABI = templates[0].ABI
 	}
 
 	dispatcher, err := wasmrt.NewDispatcher(engine, wasmrt.DispatcherConfig{
@@ -422,14 +429,16 @@ func writeBenchReport(cmd *cobra.Command, report benchReport) error {
 	}
 	printBenchSeries(cmd, "warm", report.Warm)
 	if report.Engine != nil {
-		fmt.Fprintf(cmd.OutOrStdout(), "\nengine: compiled=%d compile_requests=%d hits=%d evictions=%d invocations=%d host_calls=%d host_call_failures=%d\n",
+		fmt.Fprintf(cmd.OutOrStdout(), "\nengine: abi=%s compiled=%d compile_requests=%d hits=%d evictions=%d invocations=%d handler_invocations=%d pool_waits=%d pool_discards=%d\n",
+			report.ExecutionABI,
 			report.Engine.CompiledModules,
 			report.Engine.CompileRequests,
 			report.Engine.CompileHits,
 			report.Engine.Evictions,
 			report.Engine.Invocations,
-			report.Engine.HostCalls,
-			report.Engine.HostCallFailures,
+			report.Engine.HandlerInvocations,
+			report.Engine.PoolWaits,
+			report.Engine.PoolDiscards,
 		)
 	}
 	if report.Dispatcher != nil {
@@ -444,6 +453,13 @@ func writeBenchReport(cmd *cobra.Command, report benchReport) error {
 		)
 	}
 	return nil
+}
+
+func benchmarkHandlerPoolSize() int {
+	if benchHandlerPool > 0 {
+		return benchHandlerPool
+	}
+	return max(1, benchConcurrency)
 }
 
 func currentBenchSystem() benchSystem {

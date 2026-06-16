@@ -12,10 +12,10 @@ wasmdee serve [flags]
 
 ## Description
 
-Starts the wasmdee HTTP gateway. This is the production-facing entry point that:
+Starts the wasmdee HTTP gateway. This is the long-lived local data-plane entry point that:
 
 - Creates a long-lived Wazero engine (one per process)
-- Preloads all deployed functions into the compiled-module warm pool
+- Preloads deployed functions unless their policy disables preload
 - Starts an autoscaling bounded dispatcher for concurrent invocations
 - Exposes REST endpoints for function invocation and observability
 
@@ -32,6 +32,12 @@ Starts the wasmdee HTTP gateway. This is the production-facing entry point that:
 | `--preload` | `true` | Compile deployed functions at startup |
 | `--scale-down-after` | `30s` | Idle time before extra workers retire |
 | `--scale-to-zero-after` | `0` (disabled) | Idle time before compiled modules are evicted |
+| `--handler-pool-size` | `1` | Reusable instances per handler function |
+| `--handler-request-limit` | `8388608` | Maximum handler request bytes |
+| `--handler-response-limit` | `8388608` | Maximum handler response bytes |
+| `--max-host-call-depth` | `8` | Maximum nested direct function calls |
+| `--request-body-limit` | `8388608` | Maximum HTTP request body bytes |
+| `--shutdown-timeout` | `10s` | Grace period for draining accepted requests |
 
 ## Endpoints
 
@@ -48,7 +54,7 @@ Starts the wasmdee HTTP gateway. This is the production-facing entry point that:
 # Start with defaults (preload enabled, auto workers)
 wasmdee serve
 
-# Production-tuned with autoscaling
+# Higher-throughput local configuration
 wasmdee serve \
   --addr 0.0.0.0:8080 \
   --min-workers 4 \

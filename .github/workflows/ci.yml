@@ -14,8 +14,18 @@ jobs:
           go-version: '1.25.x'
           check-latest: false
       - name: Check formatting
-        run: test -z "$(gofmt -l cmd internal)"
+        run: test -z "$(gofmt -l cmd internal tools)"
       - run: go test ./...
+      - run: go test ./tools/...
+      - name: Test Docker baseline source
+        working-directory: benchmarks/docker
+        run: go test ./...
+      - name: Verify generated handler fixture
+        run: |
+          go run ./tools/handler-example --out /tmp/wasmdee-handler-example.wasm
+          cmp examples/handler/echo.wasm /tmp/wasmdee-handler-example.wasm
+      - name: Race test runtime
+        run: go test -race ./internal/runtime
       - run: go build -o /tmp/wasmdee ./cmd/wasmdee
 
   gui:
@@ -35,6 +45,7 @@ jobs:
         working-directory: gui/frontend
         run: |
           npm ci
+          npm test
           npm run build
       - name: Test GUI Go package
         working-directory: gui

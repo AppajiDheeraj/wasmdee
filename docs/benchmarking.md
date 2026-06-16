@@ -32,9 +32,13 @@ Local mode reports:
 - `memory`: Go heap allocation before and after the warm run, included in JSON
   and HTML reports.
 
-This is not a proto-faaslet snapshot benchmark yet. It does not prove CoW
-snapshot restore, lazy page restore, OS fork restore, or reusable instance-pool
-latency.
+When the target implements the handler ABI, the warm series measures exclusive
+borrowing from the reusable instance pool, request/response transfer through
+linear memory, reset, and return to the pool. The report records
+`execution_abi`, handler invocation count, pool waits, and discarded instances.
+
+This is not a proto-faaslet snapshot benchmark. It does not prove CoW snapshot
+restore, lazy page restore, or OS fork restore.
 
 Use `--report path/to/result.html` for a shareable visual report or
 `--report path/to/result.json` for raw data that can be checked into a benchmark
@@ -112,16 +116,16 @@ The current engine exposes an experimental `wasmdee.invoke` host import:
 
 The ABI reads a target function name and payload from caller memory, invokes the
 target deployed function in the same process, writes stdout into the caller's
-output buffer, and returns a packed status/size value. This bypasses HTTP, but it
-still needs SDK examples, call-chain limits, tracing, and policy controls before
-it should be presented as the final fast path.
+output buffer, and returns a packed status/size value. This bypasses HTTP. The
+runtime enforces call-cycle and maximum-depth limits, while distributed tracing
+and richer authorization policy remain future work.
 
-The planned faaslet path should introduce a handler ABI where a module exports a
-stable function such as `handle(ptr, len) -> result`. That ABI can support:
+Handler-ABI modules borrow a pre-instantiated instance, exchange request and
+response bytes through linear memory, reset the instance, and return it to the
+pool. See `docs/handler-abi.md` for the exact contract.
 
-- pre-instantiated template modules,
-- direct function-to-function host calls,
-- snapshot-after-init experiments,
-- memory reset or pseudo-snapshot restore,
-- eventual lower-level CoW/lazy page restore if the runtime exposes the needed
-  memory controls.
+Use `scripts/benchmark-compare.sh` for a same-machine wasmdee-versus-Docker HTTP
+comparison. The script requires a running Docker daemon and writes raw JSON,
+runtime telemetry, logs, and environment metadata under `benchmark-results/`.
+Online benchmark numbers are background context only and must not be mixed with
+locally measured wasmdee data.

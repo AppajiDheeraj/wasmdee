@@ -111,7 +111,7 @@
 
     <rect x="1904" y="460" width="354" height="116" rx="18" fill="#fffdf7" class="box"/>
     <text x="2081" y="496" text-anchor="middle" class="h">FUNCTION CONTROLS</text>
-    <text x="2081" y="524" text-anchor="middle" class="s">preload, zero_copy flag</text>
+    <text x="2081" y="524" text-anchor="middle" class="s">preload + concurrency policy</text>
     <text x="2081" y="548" text-anchor="middle" class="s">max_concurrency, scale-to-zero</text>
   </g>
 

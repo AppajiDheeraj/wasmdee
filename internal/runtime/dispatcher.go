@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/dheeraj/wasmdee/internal/state"
 )
 
 var (
@@ -15,6 +17,9 @@ var (
 
 	// ErrDispatcherClosed means the dispatcher is no longer accepting work.
 	ErrDispatcherClosed = errors.New("runtime dispatcher is closed")
+
+	// ErrFunctionConcurrencyLimit means one function reached its deployment limit.
+	ErrFunctionConcurrencyLimit = errors.New("function concurrency limit reached")
 )
 
 // DispatcherConfig controls admission and worker sizing.
@@ -49,11 +54,13 @@ type Dispatcher struct {
 	cfg    DispatcherConfig
 	tel    *telemetry
 
-	jobs   chan dispatchJob
-	done   chan struct{}
-	mu     sync.RWMutex
-	wg     sync.WaitGroup
-	closed atomic.Bool
+	jobs     chan dispatchJob
+	done     chan struct{}
+	mu       sync.RWMutex
+	wg       sync.WaitGroup
+	closed   atomic.Bool
+	limitsMu sync.Mutex
+	limits   map[string]*functionLimit
 
 	accepted  atomic.Uint64
 	rejected  atomic.Uint64
@@ -64,14 +71,20 @@ type Dispatcher struct {
 }
 
 type dispatchJob struct {
-	ctx context.Context
-	inv Invocation
-	res chan dispatchResult
+	ctx          context.Context
+	inv          Invocation
+	res          chan dispatchResult
+	releaseLimit func()
 }
 
 type dispatchResult struct {
 	result Result
 	err    error
+}
+
+type functionLimit struct {
+	limit int
+	slots chan struct{}
 }
 
 // NewDispatcher starts a fixed-size worker pool.
@@ -99,6 +112,7 @@ func NewDispatcher(engine *Engine, cfg DispatcherConfig) (*Dispatcher, error) {
 		tel:    newTelemetry(),
 		jobs:   make(chan dispatchJob, cfg.QueueSize),
 		done:   make(chan struct{}),
+		limits: make(map[string]*functionLimit),
 	}
 	for i := 0; i < cfg.MinWorkers; i++ {
 		d.spawnWorkerLocked()
@@ -108,6 +122,9 @@ func NewDispatcher(engine *Engine, cfg DispatcherConfig) (*Dispatcher, error) {
 
 // Submit enqueues one invocation or returns ErrQueueFull immediately.
 func (d *Dispatcher) Submit(ctx context.Context, inv Invocation) (Result, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	d.mu.RLock()
 	if d.closed.Load() {
 		d.mu.RUnlock()
@@ -116,9 +133,16 @@ func (d *Dispatcher) Submit(ctx context.Context, inv Invocation) (Result, error)
 	if inv.Timeout <= 0 {
 		inv.Timeout = d.cfg.DefaultTimeout
 	}
+	releaseLimit, err := d.acquireFunctionLimit(inv.Function)
+	if err != nil {
+		d.rejected.Add(1)
+		d.tel.RecordRejected(inv.Function.Name)
+		d.mu.RUnlock()
+		return Result{}, err
+	}
 
 	res := make(chan dispatchResult, 1)
-	job := dispatchJob{ctx: ctx, inv: inv, res: res}
+	job := dispatchJob{ctx: ctx, inv: inv, res: res, releaseLimit: releaseLimit}
 	select {
 	case d.jobs <- job:
 		d.accepted.Add(1)
@@ -126,9 +150,11 @@ func (d *Dispatcher) Submit(ctx context.Context, inv Invocation) (Result, error)
 		d.mu.RUnlock()
 		d.maybeScaleUp()
 	case <-ctx.Done():
+		releaseLimit()
 		d.mu.RUnlock()
 		return Result{}, ctx.Err()
 	default:
+		releaseLimit()
 		d.rejected.Add(1)
 		d.tel.RecordRejected(inv.Function.Name)
 		d.mu.RUnlock()
@@ -226,11 +252,37 @@ func (d *Dispatcher) worker() {
 }
 
 func (d *Dispatcher) handle(job dispatchJob) {
+	defer job.releaseLimit()
 	d.tel.RecordStarted(job.inv.Function.Name)
 	result, err := d.engine.Invoke(job.ctx, job.inv)
 	d.tel.RecordCompleted(job.inv.Function.Name, result, err)
 	d.completed.Add(1)
 	job.res <- dispatchResult{result: result, err: err}
+}
+
+func (d *Dispatcher) acquireFunctionLimit(fn state.Function) (func(), error) {
+	limit, err := functionMaxConcurrency(fn)
+	if err != nil {
+		return func() {}, err
+	}
+	if limit == 0 {
+		return func() {}, nil
+	}
+
+	d.limitsMu.Lock()
+	current := d.limits[fn.Name]
+	if current == nil || (current.limit != limit && len(current.slots) == 0) {
+		current = &functionLimit{limit: limit, slots: make(chan struct{}, limit)}
+		d.limits[fn.Name] = current
+	}
+	d.limitsMu.Unlock()
+
+	select {
+	case current.slots <- struct{}{}:
+		return func() { <-current.slots }, nil
+	default:
+		return func() {}, ErrFunctionConcurrencyLimit
+	}
 }
 
 func (d *Dispatcher) maybeScaleUp() {
