@@ -120,7 +120,7 @@ The repository also contains editable diagram sources:
 
 - [Detailed architecture SVG](docs/diagrams/wasmdee_deep_architecture.svg)
 - [Simplified architecture SVG](docs/diagrams/wasmdee_arrow_architecture.svg)
-- [Event trace Excalidraw file](docs/diagrams/wasmdee_event_trace.excalidraw)
+- [Interview architecture Excalidraw file](docs/diagrams/wasmdee_event_trace.excalidraw)
 - [Code-path system trace](docs/tracing.md)
 - [Architecture notes and trade-offs](docs/architecture.md)
 
