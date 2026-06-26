@@ -12,6 +12,7 @@ shared runtime instead of one container process per function.
 [![Wazero](https://img.shields.io/badge/runtime-Wazero-654FF0)](https://wazero.io/)
 [![WASI](https://img.shields.io/badge/ABI-WASI-5C4EE5)](https://wasi.dev/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-2F6FEB)](LICENSE)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/AppajiDheeraj/wasmdee)
 
 [Quick start](#quick-start) ·
 [Architecture](#architecture) ·
